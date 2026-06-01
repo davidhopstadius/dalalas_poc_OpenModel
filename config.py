@@ -14,12 +14,25 @@ class ConfigError(Exception):
     """Kastas nar nodvandig konfiguration saknas."""
 
 
+def _as_bool(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on", "ja")
+
+
 @dataclass
 class Config:
     api_key: str
     base_url: str = DEFAULT_BASE_URL
     model: str = DEFAULT_MODEL
     system_prompt: str | None = None
+    thinking: bool = True
+    brave_api_key: str | None = None
+
+    @property
+    def search_enabled(self) -> bool:
+        """Web search ar tillgangligt bara om en Brave-nyckel finns."""
+        return bool(self.brave_api_key)
 
 
 def load_config() -> Config:
@@ -41,4 +54,6 @@ def load_config() -> Config:
         base_url=os.getenv("GRUNDEN_BASE_URL", DEFAULT_BASE_URL),
         model=os.getenv("GRUNDEN_MODEL", DEFAULT_MODEL),
         system_prompt=os.getenv("GRUNDEN_SYSTEM_PROMPT") or None,
+        thinking=_as_bool(os.getenv("GRUNDEN_THINKING"), default=True),
+        brave_api_key=os.getenv("BRAVE_API_KEY") or None,
     )

@@ -12,11 +12,32 @@ eller som interaktiv CLI:
 """
 from __future__ import annotations
 
+from datetime import date
+
 from openai import OpenAI, OpenAIError
 
+import tools
 from config import Config, ConfigError, load_config
 
-Message = dict[str, str]
+Message = dict
+
+# Max antal verktygsrundor per fraga, sa vi inte fastnar i en oandlig loop.
+MAX_TOOL_ROUNDS = 5
+
+
+def default_system_prompt(search_enabled: bool) -> str:
+    today = date.today().isoformat()
+    prompt = (
+        f"Du ar en hjalpsam assistent. Dagens datum ar {today}. "
+        "Svara pa svenska, utforligt och faktagranskat."
+    )
+    if search_enabled:
+        prompt += (
+            " Du har tillgang till verktyget web_search. Anvand det nar fragan "
+            "ror aktuell information, datum eller fakta du ar osaker pa, och "
+            "grunda ditt svar pa sokresultaten."
+        )
+    return prompt
 
 
 class GrundenChat:
@@ -29,24 +50,57 @@ class GrundenChat:
             base_url=self.config.base_url,
         )
         self.history: list[Message] = []
-        if self.config.system_prompt:
-            self.history.append(
-                {"role": "system", "content": self.config.system_prompt}
-            )
+        system = self.config.system_prompt or default_system_prompt(
+            self.config.search_enabled
+        )
+        self.history.append({"role": "system", "content": system})
+
+    def _create(self):
+        kwargs = {
+            "model": self.config.model,
+            "messages": self.history,
+        }
+        schemas = tools.schemas(self.config.search_enabled)
+        if schemas:
+            kwargs["tools"] = schemas
+            kwargs["tool_choice"] = "auto"
+        if self.config.thinking:
+            kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
+        return self.client.chat.completions.create(**kwargs)
 
     def ask(self, prompt: str) -> str:
-        """Skicka ett meddelande, lagg svaret i historiken och returnera det."""
+        """Skicka ett meddelande, kor ev. verktyg, och returnera svaret."""
         self.history.append({"role": "user", "content": prompt})
-        response = self.client.chat.completions.create(
-            model=self.config.model,
-            messages=self.history,
-        )
-        answer = response.choices[0].message.content or ""
-        self.history.append({"role": "assistant", "content": answer})
-        return answer
+
+        for _ in range(MAX_TOOL_ROUNDS):
+            message = self._create().choices[0].message
+
+            assistant_msg: Message = {"role": "assistant", "content": message.content}
+            if message.tool_calls:
+                assistant_msg["tool_calls"] = [
+                    tc.model_dump() for tc in message.tool_calls
+                ]
+            self.history.append(assistant_msg)
+
+            if not message.tool_calls:
+                return message.content or ""
+
+            for tc in message.tool_calls:
+                result = tools.run_tool(
+                    tc.function.name, tc.function.arguments, self.config
+                )
+                self.history.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": result,
+                    }
+                )
+
+        return "(Avbrot: for manga verktygsrundor utan slutgiltigt svar.)"
 
     def reset(self) -> None:
-        """Nollstall historiken (behaller ev. systemprompt)."""
+        """Nollstall historiken (behaller systemprompten)."""
         self.history = [m for m in self.history if m["role"] == "system"]
 
 
@@ -65,7 +119,9 @@ def run() -> int:
         print(f"Konfigurationsfel: {err}")
         return 1
 
-    print(f"Grunden-chatt  (modell: {bot.config.model})")
+    search = "pa" if bot.config.search_enabled else "av"
+    think = "pa" if bot.config.thinking else "av"
+    print(f"Grunden-chatt  (modell: {bot.config.model} | sokning: {search} | thinking: {think})")
     print("Skriv ett meddelande. /help for kommandon, /exit for att avsluta.\n")
 
     while True:
@@ -92,7 +148,6 @@ def run() -> int:
             answer = bot.ask(prompt)
         except OpenAIError as err:
             print(f"API-fel: {err}\n")
-            # Ta bort det obesvarade meddelandet sa historiken halls ren
             if bot.history and bot.history[-1]["role"] == "user":
                 bot.history.pop()
             continue
