@@ -32,7 +32,8 @@ Satts i `.env` (se [.env.example](.env.example)):
 | `GRUNDEN_BASE_URL` | `https://api.grunden.ai/v1` | API-endpoint |
 | `GRUNDEN_MODEL` | `glm-5.1` | Modellnamn |
 | `GRUNDEN_THINKING` | `1` | Reasoning/thinking-lage (1=pa, 0=av) |
-| `BRAVE_API_KEY` | – | Brave Search-nyckel. Utan den stangs web search av. |
+| `GRUNDEN_SEARCH` | `1` | Web search pa/av (1=pa, 0=av) |
+| `BRAVE_API_KEY` | – | Brave Search-nyckel. Kravs for att sokning ska fungera. |
 | `GRUNDEN_SYSTEM_PROMPT` | – | Egen systemprompt (annars en standard med dagens datum) |
 
 ## Sa stangs gapet mot webb-GUI:t

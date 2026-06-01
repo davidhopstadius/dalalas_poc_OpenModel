@@ -33,9 +33,12 @@ def default_system_prompt(search_enabled: bool) -> str:
     )
     if search_enabled:
         prompt += (
-            " Du har tillgang till verktyget web_search. Anvand det nar fragan "
-            "ror aktuell information, datum eller fakta du ar osaker pa, och "
-            "grunda ditt svar pa sokresultaten."
+            " Du har tillgang till verktyget web_search. Du MASTE anvanda "
+            "web_search innan du svarar pa fragor som ror aktuella handelser, "
+            "datum, vem som innehar en post eller titel, nyheter, priser, eller "
+            "annan fakta som kan ha andrats efter din traningsdata. Gissa aldrig "
+            "ur minnet pa sadana fragor. Grunda svaret pa sokresultaten och var "
+            "konkret med namn, datum och detaljer."
         )
     return prompt
 
@@ -68,8 +71,12 @@ class GrundenChat:
             kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
         return self.client.chat.completions.create(**kwargs)
 
-    def ask(self, prompt: str) -> str:
-        """Skicka ett meddelande, kor ev. verktyg, och returnera svaret."""
+    def ask(self, prompt: str, on_tool=None) -> str:
+        """Skicka ett meddelande, kor ev. verktyg, och returnera svaret.
+
+        on_tool: valfri callback (name, arguments) som anropas nar modellen
+        begar ett verktyg - anvands av CLI:t for att visa en sokindikator.
+        """
         self.history.append({"role": "user", "content": prompt})
 
         for _ in range(MAX_TOOL_ROUNDS):
@@ -86,6 +93,8 @@ class GrundenChat:
                 return message.content or ""
 
             for tc in message.tool_calls:
+                if on_tool:
+                    on_tool(tc.function.name, tc.function.arguments)
                 result = tools.run_tool(
                     tc.function.name, tc.function.arguments, self.config
                 )
@@ -144,8 +153,17 @@ def run() -> int:
             print("(konversationen nollstalld)")
             continue
 
+        def show_tool(name: str, arguments: str) -> None:
+            import json
+            try:
+                args = json.loads(arguments) if arguments else {}
+            except json.JSONDecodeError:
+                args = {}
+            detalj = args.get("query", arguments)
+            print(f"  [{name}: {detalj}]")
+
         try:
-            answer = bot.ask(prompt)
+            answer = bot.ask(prompt, on_tool=show_tool)
         except OpenAIError as err:
             print(f"API-fel: {err}\n")
             if bot.history and bot.history[-1]["role"] == "user":

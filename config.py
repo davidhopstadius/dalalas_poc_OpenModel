@@ -27,12 +27,13 @@ class Config:
     model: str = DEFAULT_MODEL
     system_prompt: str | None = None
     thinking: bool = True
+    search: bool = True
     brave_api_key: str | None = None
 
     @property
     def search_enabled(self) -> bool:
-        """Web search ar tillgangligt bara om en Brave-nyckel finns."""
-        return bool(self.brave_api_key)
+        """Web search ar pa bara om flaggan ar satt OCH en Brave-nyckel finns."""
+        return self.search and bool(self.brave_api_key)
 
 
 def load_config() -> Config:
@@ -55,5 +56,6 @@ def load_config() -> Config:
         model=os.getenv("GRUNDEN_MODEL", DEFAULT_MODEL),
         system_prompt=os.getenv("GRUNDEN_SYSTEM_PROMPT") or None,
         thinking=_as_bool(os.getenv("GRUNDEN_THINKING"), default=True),
+        search=_as_bool(os.getenv("GRUNDEN_SEARCH"), default=True),
         brave_api_key=os.getenv("BRAVE_API_KEY") or None,
     )
