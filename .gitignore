@@ -3,6 +3,13 @@
 .env.*
 !.env.example
 
+# Kalldokument for indexering (manualer ska inte in i repot)
+documents/*
+!documents/.gitkeep
+
+# RAG-index (genererade embeddings/chunks)
+rag_index/
+
 # Python
 __pycache__/
 *.py[cod]

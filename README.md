@@ -1,8 +1,8 @@
 # PocGrunden
 
-Liten chatt-app mot Grunden.ai:s OpenAI-kompatibla API, med **web search**
-(via Brave) och **reasoning/thinking** for svar i niva med leverantorens
-webb-GUI.
+Chatt-app mot Grunden.ai:s OpenAI-kompatibla API, med **web search** (via Brave),
+**reasoning/thinking** och **dokumentsokning (RAG)** i tekniska manualer.
+POC pa vag mot en chatbot for lastekniker i falt.
 
 ## Kom igang
 
@@ -34,7 +34,26 @@ Satts i `.env` (se [.env.example](.env.example)):
 | `GRUNDEN_THINKING` | `1` | Reasoning/thinking-lage (1=pa, 0=av) |
 | `GRUNDEN_SEARCH` | `1` | Web search pa/av (1=pa, 0=av) |
 | `BRAVE_API_KEY` | – | Brave Search-nyckel. Kravs for att sokning ska fungera. |
+| `GRUNDEN_DOC_SEARCH` | `1` | Dokumentsokning (RAG) pa/av |
+| `GRUNDEN_EMBED_MODEL` | `bge-m3` | Embeddingmodell for indexering/sokning |
+| `RAG_INDEX_DIR` | `rag_index` | Mapp dar indexet sparas |
+| `RAG_TOP_K` | `5` | Antal traffar som hamtas per dokumentsokning |
 | `GRUNDEN_SYSTEM_PROMPT` | – | Egen systemprompt (annars en standard med dagens datum) |
+
+## Dokumentsokning (RAG)
+
+Lagg tekniska manualer (PDF) i mappen `documents/` och indexera dem:
+
+```powershell
+python ingest.py            # indexerar alla PDF:er i documents/
+python ingest.py minfil.pdf # eller en specifik fil/mapp
+```
+
+Inlasningen sker lokalt med PyMuPDF (tabeller halls intakta), texten embeddas
+via Grundens `bge-m3` och sparas i `rag_index/`. I chatten exponeras detta som
+verktyget `doc_search` – modellen soker i manualerna och svarar med
+**sidhanvisning** till kallan. Kor `python ingest.py` igen nar du vill lagga
+till fler dokument. Bade `documents/` och `rag_index/` ar gitignorerade.
 
 ## Sa stangs gapet mot webb-GUI:t
 
@@ -56,4 +75,6 @@ print(bot.ask("Hej!"))
 
 - [config.py](config.py) – laddar/validerar konfiguration fran `.env`
 - [chat.py](chat.py) – `GrundenChat`-klassen + interaktiv CLI-loop
-- [tools.py](tools.py) – function-calling-verktyg (web search via Brave)
+- [tools.py](tools.py) – function-calling-verktyg (`web_search`, `doc_search`)
+- [rag.py](rag.py) – lokalt RAG-index: embeddings, sokning
+- [ingest.py](ingest.py) – CLI for att indexera PDF-dokument fran `documents/`

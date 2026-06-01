@@ -17,7 +17,9 @@ class ConfigError(Exception):
 def _as_bool(value: str | None, default: bool) -> bool:
     if value is None:
         return default
-    return value.strip().lower() in ("1", "true", "yes", "on", "ja")
+    # Ta forsta ordet sa en ev. inline-kommentar inte forstor tolkningen
+    token = value.strip().split(maxsplit=1)[0].lower() if value.strip() else ""
+    return token in ("1", "true", "yes", "on", "ja")
 
 
 @dataclass
@@ -29,6 +31,11 @@ class Config:
     thinking: bool = True
     search: bool = True
     brave_api_key: str | None = None
+    # RAG / dokumentsokning
+    doc_search: bool = True
+    embed_model: str = "bge-m3"
+    index_dir: str = "rag_index"
+    rag_top_k: int = 5
 
     @property
     def search_enabled(self) -> bool:
@@ -58,4 +65,8 @@ def load_config() -> Config:
         thinking=_as_bool(os.getenv("GRUNDEN_THINKING"), default=True),
         search=_as_bool(os.getenv("GRUNDEN_SEARCH"), default=True),
         brave_api_key=os.getenv("BRAVE_API_KEY") or None,
+        doc_search=_as_bool(os.getenv("GRUNDEN_DOC_SEARCH"), default=True),
+        embed_model=os.getenv("GRUNDEN_EMBED_MODEL", "bge-m3"),
+        index_dir=os.getenv("RAG_INDEX_DIR", "rag_index"),
+        rag_top_k=int(os.getenv("RAG_TOP_K", "5")),
     )

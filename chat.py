@@ -16,6 +16,7 @@ from datetime import date
 
 from openai import OpenAI, OpenAIError
 
+import rag
 import tools
 from config import Config, ConfigError, load_config
 
@@ -25,20 +26,28 @@ Message = dict
 MAX_TOOL_ROUNDS = 5
 
 
-def default_system_prompt(search_enabled: bool) -> str:
+def default_system_prompt(config: Config) -> str:
     today = date.today().isoformat()
     prompt = (
-        f"Du ar en hjalpsam assistent. Dagens datum ar {today}. "
+        f"Du ar en hjalpsam assistent for lastekniker. Dagens datum ar {today}. "
         "Svara pa svenska, utforligt och faktagranskat."
     )
-    if search_enabled:
+    if config.doc_search and rag.has_index(config):
         prompt += (
-            " Du har tillgang till verktyget web_search. Du MASTE anvanda "
-            "web_search innan du svarar pa fragor som ror aktuella handelser, "
-            "datum, vem som innehar en post eller titel, nyheter, priser, eller "
-            "annan fakta som kan ha andrats efter din traningsdata. Gissa aldrig "
-            "ur minnet pa sadana fragor. Grunda svaret pa sokresultaten och var "
-            "konkret med namn, datum och detaljer."
+            " Du har tillgang till verktyget doc_search som soker i indexerad "
+            "teknisk dokumentation (installations- och servicemanualer). Anvand "
+            "doc_search for fragor om specifika system, felsokning, felkoder, "
+            "installation, kopplingar, installningar och artikelnummer. Grunda "
+            "svaret pa traffarna och **ange alltid kalla med sidnummer** "
+            "(t.ex. 'enligt SW300-manualen, sida 92')."
+        )
+    if config.search_enabled:
+        prompt += (
+            " Du har ocksa verktyget web_search. Du MASTE anvanda web_search "
+            "innan du svarar pa fragor som ror aktuella handelser, datum, vem "
+            "som innehar en post eller titel, nyheter, priser, eller annan fakta "
+            "som kan ha andrats efter din traningsdata. Gissa aldrig ur minnet "
+            "pa sadana fragor."
         )
     return prompt
 
@@ -53,9 +62,7 @@ class GrundenChat:
             base_url=self.config.base_url,
         )
         self.history: list[Message] = []
-        system = self.config.system_prompt or default_system_prompt(
-            self.config.search_enabled
-        )
+        system = self.config.system_prompt or default_system_prompt(self.config)
         self.history.append({"role": "system", "content": system})
 
     def _create(self):
@@ -63,7 +70,7 @@ class GrundenChat:
             "model": self.config.model,
             "messages": self.history,
         }
-        schemas = tools.schemas(self.config.search_enabled)
+        schemas = tools.schemas(self.config)
         if schemas:
             kwargs["tools"] = schemas
             kwargs["tool_choice"] = "auto"
@@ -128,9 +135,13 @@ def run() -> int:
         print(f"Konfigurationsfel: {err}")
         return 1
 
-    search = "pa" if bot.config.search_enabled else "av"
+    web = "pa" if bot.config.search_enabled else "av"
+    docs = "pa" if (bot.config.doc_search and rag.has_index(bot.config)) else "av"
     think = "pa" if bot.config.thinking else "av"
-    print(f"Grunden-chatt  (modell: {bot.config.model} | sokning: {search} | thinking: {think})")
+    print(
+        f"Grunden-chatt  (modell: {bot.config.model} | webbsok: {web} | "
+        f"doksok: {docs} | thinking: {think})"
+    )
     print("Skriv ett meddelande. /help for kommandon, /exit for att avsluta.\n")
 
     while True:
