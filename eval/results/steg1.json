@@ -1,0 +1,146 @@
+{
+  "label": "steg1",
+  "k": 5,
+  "chunks": 218,
+  "timestamp": "2026-06-01T13:52:44+00:00",
+  "per_question": [
+    {
+      "q": "Vilket artikelnummer har PUSH-arm service kit?",
+      "category": "Artikelnr",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Vad är artikelnumret för Transmissionsenhet SW300?",
+      "category": "Artikelnr",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Vilken snabbstartguide beskriver dubbelverkande funktion?",
+      "category": "Doknr",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Vad är dokument PRA-0007?",
+      "category": "Doknr",
+      "page_hit": true,
+      "keyword_hit": false
+    },
+    {
+      "q": "Vad betyder CLTQ?",
+      "category": "Akronym",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Vad gör funktionen POAS?",
+      "category": "Akronym",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Vad innebär PAG?",
+      "category": "Akronym",
+      "page_hit": false,
+      "keyword_hit": true
+    },
+    {
+      "q": "Hur lång är aktiveringsfördröjningen AD?",
+      "category": "Siffra",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Efter hur lång tid stängs dörren om ingen ny ÖPPEN/STÄNG-impuls kommer?",
+      "category": "Siffra",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Hur många gånger kan dörren öppna och stänga i convenience-läge på batteri?",
+      "category": "Siffra",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Hur mycket ström kan låsutgången maximalt ge?",
+      "category": "Siffra",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Vilken standard måste låset uppfylla vid omvänd installation?",
+      "category": "Standard",
+      "page_hit": false,
+      "keyword_hit": false
+    },
+    {
+      "q": "Vilken EN-standard gäller för justering av stängningskraft?",
+      "category": "Standard",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Vilka sensorer är inte aktiva vid batteridrift i energisparläge?",
+      "category": "Lista",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Vad betyder tre korta blink på statuslysdioden?",
+      "category": "Kontroll",
+      "page_hit": true,
+      "keyword_hit": true
+    },
+    {
+      "q": "Vad händer vid strömavbrott med dörröppnaren?",
+      "category": "Kontroll",
+      "page_hit": false,
+      "keyword_hit": false
+    }
+  ],
+  "by_category": {
+    "Artikelnr": {
+      "n": 2,
+      "page": 2,
+      "keyword": 2
+    },
+    "Doknr": {
+      "n": 2,
+      "page": 2,
+      "keyword": 1
+    },
+    "Akronym": {
+      "n": 3,
+      "page": 2,
+      "keyword": 3
+    },
+    "Siffra": {
+      "n": 4,
+      "page": 4,
+      "keyword": 4
+    },
+    "Standard": {
+      "n": 2,
+      "page": 1,
+      "keyword": 1
+    },
+    "Lista": {
+      "n": 1,
+      "page": 1,
+      "keyword": 1
+    },
+    "Kontroll": {
+      "n": 2,
+      "page": 1,
+      "keyword": 1
+    }
+  },
+  "total": {
+    "n": 16,
+    "page": 13,
+    "keyword": 13
+  }
+}

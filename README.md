@@ -62,6 +62,17 @@ med standard function calling: modellen ber om en sokning (`web_search`),
 appen kor sokningen mot Brave och matar tillbaka resultaten, varpa modellen
 svarar grundat pa farsk fakta. Reasoning slas pa via `thinking`-parametern.
 
+## Utvardering av dokumentsokning
+
+`eval.py` mater retrieval-kvalitet (recall@k) mot ett testset med facit
+([eval/questions.jsonl](eval/questions.jsonl)). Varje korning sparas i
+`eval/results/<label>.json` sa resultat kan jamforas over tid:
+
+```powershell
+python eval.py --label steg1                  # spara baslinje
+python eval.py --label steg2 --compare steg1  # kor + visa skillnad mot baslinjen
+```
+
 ## Anvanda som bibliotek
 
 ```python
@@ -78,3 +89,4 @@ print(bot.ask("Hej!"))
 - [tools.py](tools.py) – function-calling-verktyg (`web_search`, `doc_search`)
 - [rag.py](rag.py) – lokalt RAG-index: embeddings, sokning
 - [ingest.py](ingest.py) – CLI for att indexera PDF-dokument fran `documents/`
+- [eval.py](eval.py) – mater retrieval-kvalitet (recall@k) mot facit, sparar/jamfor korningar
