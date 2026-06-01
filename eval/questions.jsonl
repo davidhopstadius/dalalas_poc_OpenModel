@@ -1,0 +1,16 @@
+{"q": "Vilket artikelnummer har PUSH-arm service kit?", "pages": [24, 93], "keywords": ["330000271"], "category": "Artikelnr"}
+{"q": "Vad är artikelnumret för Transmissionsenhet SW300?", "pages": [24, 93], "keywords": ["331007819"], "category": "Artikelnr"}
+{"q": "Vilken snabbstartguide beskriver dubbelverkande funktion?", "pages": [17], "keywords": ["1011548"], "category": "Doknr"}
+{"q": "Vad är dokument PRA-0007?", "pages": [9, 93], "keywords": ["PRA-0007"], "category": "Doknr"}
+{"q": "Vad betyder CLTQ?", "pages": [16], "keywords": ["CLTQ", "stängningsmoment"], "category": "Akronym"}
+{"q": "Vad gör funktionen POAS?", "pages": [16], "keywords": ["POAS", "servoassistans"], "category": "Akronym"}
+{"q": "Vad innebär PAG?", "pages": [16], "keywords": ["PAG", "Push & Go", "Push and Go"], "category": "Akronym"}
+{"q": "Hur lång är aktiveringsfördröjningen AD?", "pages": [16], "keywords": ["2 sekunder", "Aktiveringsfördröjning"], "category": "Siffra"}
+{"q": "Efter hur lång tid stängs dörren om ingen ny ÖPPEN/STÄNG-impuls kommer?", "pages": [18], "keywords": ["15 minuter"], "category": "Siffra"}
+{"q": "Hur många gånger kan dörren öppna och stänga i convenience-läge på batteri?", "pages": [18], "keywords": ["300"], "category": "Siffra"}
+{"q": "Hur mycket ström kan låsutgången maximalt ge?", "pages": [17], "keywords": ["600 mA"], "category": "Siffra"}
+{"q": "Vilken standard måste låset uppfylla vid omvänd installation?", "pages": [16], "keywords": ["ELtVTR"], "category": "Standard"}
+{"q": "Vilken EN-standard gäller för justering av stängningskraft?", "pages": [15, 73], "keywords": ["EN1154"], "category": "Standard"}
+{"q": "Vilka sensorer är inte aktiva vid batteridrift i energisparläge?", "pages": [18], "keywords": ["Matta", "närvarodetektor"], "category": "Lista"}
+{"q": "Vad betyder tre korta blink på statuslysdioden?", "pages": [92], "keywords": ["styrmodul", "drivenhet"], "category": "Kontroll"}
+{"q": "Vad händer vid strömavbrott med dörröppnaren?", "pages": [15], "keywords": ["dörrstängare"], "category": "Kontroll"}

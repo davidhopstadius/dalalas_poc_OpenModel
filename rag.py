@@ -97,18 +97,23 @@ def load_index(config: Config) -> tuple[list[Chunk], np.ndarray | None]:
     return chunks, np.vstack(mats)
 
 
+def rank(query_vec: np.ndarray, chunks: list[Chunk], mat: np.ndarray, k: int) -> list[tuple[Chunk, float]]:
+    """Rangordna chunks mot en redan embeddad fraga (cosine-likhet)."""
+    q = query_vec / (np.linalg.norm(query_vec) + 1e-9)
+    norms = mat / (np.linalg.norm(mat, axis=1, keepdims=True) + 1e-9)
+    sims = norms @ q
+    top = np.argsort(-sims)[:k]
+    return [(chunks[i], float(sims[i])) for i in top]
+
+
 def retrieve(query: str, config: Config, k: int | None = None) -> list[tuple[Chunk, float]]:
     """Hamta de k mest relevanta chunkarna for fragan (cosine-likhet)."""
     k = k or config.rag_top_k
     chunks, mat = load_index(config)
     if not chunks or mat is None:
         return []
-    q = embed_texts([query], config)[0]
-    q = q / (np.linalg.norm(q) + 1e-9)
-    norms = mat / (np.linalg.norm(mat, axis=1, keepdims=True) + 1e-9)
-    sims = norms @ q
-    top = np.argsort(-sims)[:k]
-    return [(chunks[i], float(sims[i])) for i in top]
+    query_vec = embed_texts([query], config)[0]
+    return rank(query_vec, chunks, mat, k)
 
 
 def format_results(results: list[tuple[Chunk, float]]) -> str:
