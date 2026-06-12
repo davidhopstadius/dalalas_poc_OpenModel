@@ -36,6 +36,11 @@ class Config:
     embed_model: str = "bge-m3"
     index_dir: str = "rag_index"
     rag_top_k: int = 5
+    # Steg 2: reranking (BGE cross-encoder). Slas pa/av i runtime - i CLI med
+    # /rerank och i GUI genom att satta config.rerank per fraga.
+    rerank: bool = True
+    rerank_model: str = "bge-reranker-v2-m3"
+    rerank_candidates: int = 20  # antal dense-traffar som skickas till rerankern
 
     @property
     def search_enabled(self) -> bool:
@@ -69,4 +74,7 @@ def load_config() -> Config:
         embed_model=os.getenv("GRUNDEN_EMBED_MODEL", "bge-m3"),
         index_dir=os.getenv("RAG_INDEX_DIR", "rag_index"),
         rag_top_k=int(os.getenv("RAG_TOP_K", "5")),
+        rerank=_as_bool(os.getenv("GRUNDEN_RERANK"), default=True),
+        rerank_model=os.getenv("GRUNDEN_RERANK_MODEL", "bge-reranker-v2-m3"),
+        rerank_candidates=int(os.getenv("RAG_RERANK_CANDIDATES", "20")),
     )

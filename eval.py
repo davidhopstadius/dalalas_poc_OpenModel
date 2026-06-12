@@ -60,7 +60,7 @@ def run_eval(config, k: int) -> dict:
 
     per_question = []
     for it, qvec in zip(items, qvecs):
-        results = rag.rank(qvec, chunks, mat, k)
+        results = rag.search(it["q"], qvec, chunks, mat, config, k)
         pages = [c.page for c, _ in results]
         text = "\n".join(c.text for c, _ in results)
         per_question.append(
@@ -76,6 +76,7 @@ def run_eval(config, k: int) -> dict:
     return {
         "label": None,
         "k": k,
+        "rerank": config.rerank,
         "chunks": len(chunks),
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "per_question": per_question,
@@ -85,7 +86,11 @@ def run_eval(config, k: int) -> dict:
 
 
 def print_report(res: dict) -> None:
-    print(f"Utvarderade {res['total']['n']} fragor mot {res['chunks']} chunks, K={res['k']}\n")
+    rr = "pa" if res.get("rerank") else "av"
+    print(
+        f"Utvarderade {res['total']['n']} fragor mot {res['chunks']} chunks, "
+        f"K={res['k']}, rerank={rr}\n"
+    )
     print(f"{'':2} {'sida':4} {'nyckel':6}  kategori    fraga")
     print("-" * 88)
     for r in res["per_question"]:
@@ -146,6 +151,14 @@ def main() -> int:
     parser.add_argument("--k", type=int, default=None, help="Antal traffar (default RAG_TOP_K)")
     parser.add_argument("--label", default="latest", help="Namn pa sparad resultatfil")
     parser.add_argument("--compare", default=None, help="Label pa tidigare korning att jamfora mot")
+    parser.add_argument(
+        "--rerank", dest="rerank", action="store_true", default=None,
+        help="Tvinga reranking pa (Steg 2)",
+    )
+    parser.add_argument(
+        "--no-rerank", dest="rerank", action="store_false",
+        help="Tvinga reranking av (ren dense, Steg 1)",
+    )
     args = parser.parse_args()
 
     try:
@@ -154,6 +167,8 @@ def main() -> int:
         print(f"Konfigurationsfel: {err}")
         return 1
 
+    if args.rerank is not None:
+        config.rerank = args.rerank
     k = args.k or config.rag_top_k
     res = run_eval(config, k)
     res["label"] = args.label

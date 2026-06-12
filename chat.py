@@ -121,10 +121,24 @@ class GrundenChat:
 
 
 HELP = """Kommandon:
-  /reset   nollstall konversationen
-  /help    visa denna hjalp
-  /exit    avsluta (aven Ctrl+C eller Ctrl+D)
+  /rerank        visa om reranking (Steg 2) ar pa eller av
+  /rerank on     sla pa reranking (BGE cross-encoder)
+  /rerank off    sla av reranking (ren dense-sokning, Steg 1)
+  /reset         nollstall konversationen
+  /help          visa denna hjalp
+  /exit          avsluta (aven Ctrl+C eller Ctrl+D)
 """
+
+
+def _status_line(config: Config) -> str:
+    web = "pa" if config.search_enabled else "av"
+    docs = "pa" if (config.doc_search and rag.has_index(config)) else "av"
+    think = "pa" if config.thinking else "av"
+    rerank = "pa" if config.rerank else "av"
+    return (
+        f"modell: {config.model} | webbsok: {web} | doksok: {docs} | "
+        f"rerank: {rerank} | thinking: {think}"
+    )
 
 
 def run() -> int:
@@ -135,13 +149,7 @@ def run() -> int:
         print(f"Konfigurationsfel: {err}")
         return 1
 
-    web = "pa" if bot.config.search_enabled else "av"
-    docs = "pa" if (bot.config.doc_search and rag.has_index(bot.config)) else "av"
-    think = "pa" if bot.config.thinking else "av"
-    print(
-        f"Grunden-chatt  (modell: {bot.config.model} | webbsok: {web} | "
-        f"doksok: {docs} | thinking: {think})"
-    )
+    print(f"Grunden-chatt  ({_status_line(bot.config)})")
     print("Skriv ett meddelande. /help for kommandon, /exit for att avsluta.\n")
 
     while True:
@@ -162,6 +170,17 @@ def run() -> int:
         if prompt == "/reset":
             bot.reset()
             print("(konversationen nollstalld)")
+            continue
+        if prompt.startswith("/rerank"):
+            arg = prompt[len("/rerank"):].strip().lower()
+            if arg in ("on", "pa", "1"):
+                bot.config.rerank = True
+            elif arg in ("off", "av", "0"):
+                bot.config.rerank = False
+            elif arg:
+                print("Anvandning: /rerank [on|off]")
+                continue
+            print(f"(reranking: {'pa' if bot.config.rerank else 'av'})")
             continue
 
         def show_tool(name: str, arguments: str) -> None:

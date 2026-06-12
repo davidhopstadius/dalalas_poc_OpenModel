@@ -38,6 +38,9 @@ Satts i `.env` (se [.env.example](.env.example)):
 | `GRUNDEN_EMBED_MODEL` | `bge-m3` | Embeddingmodell for indexering/sokning |
 | `RAG_INDEX_DIR` | `rag_index` | Mapp dar indexet sparas |
 | `RAG_TOP_K` | `5` | Antal traffar som hamtas per dokumentsokning |
+| `GRUNDEN_RERANK` | `1` | Reranking (Steg 2) pa/av. Kan ocksa slas av/pa live med `/rerank` |
+| `GRUNDEN_RERANK_MODEL` | `bge-reranker-v2-m3` | Rerank-modell (cross-encoder) |
+| `RAG_RERANK_CANDIDATES` | `20` | Antal dense-traffar som skickas till rerankern |
 | `GRUNDEN_SYSTEM_PROMPT` | – | Egen systemprompt (annars en standard med dagens datum) |
 
 ## Dokumentsokning (RAG)
@@ -55,6 +58,23 @@ verktyget `doc_search` – modellen soker i manualerna och svarar med
 **sidhanvisning** till kallan. Kor `python ingest.py` igen nar du vill lagga
 till fler dokument. Bade `documents/` och `rag_index/` ar gitignorerade.
 
+## Reranking (Steg 2) – pa/av live
+
+Dense-sokningen (cosine) hittar ratt sida i de flesta fall men missar ibland
+fragor som kraver exakt formulering (standarder, kontrollfragor). **Steg 2**
+hamtar darfor fler dense-kandidater och later Grundens **BGE cross-encoder**
+(`bge-reranker-v2-m3`) omsortera dem innan de basta `RAG_TOP_K` valjs.
+
+Spaken ar gjord for att kunna utforskas live i ett kundmote:
+
+- I chatten: `/rerank on` / `/rerank off` (eller `/rerank` for att se laget).
+- I kommande GUI: satt `config.rerank` per fraga.
+- Som standard fran `.env`: `GRUNDEN_RERANK`.
+
+Flaggan lases vid varje fraga, sa man kan stalla samma fraga med och utan
+reranking och jamfora svaren direkt. Slar endpointen fel faller sokningen
+tillbaka pa ren dense.
+
 ## Sa stangs gapet mot webb-GUI:t
 
 Grundens API har ingen inbyggd web search. Appen aterskapar GUI:ts beteende
@@ -69,9 +89,12 @@ svarar grundat pa farsk fakta. Reasoning slas pa via `thinking`-parametern.
 `eval/results/<label>.json` sa resultat kan jamforas over tid:
 
 ```powershell
-python eval.py --label steg1                  # spara baslinje
-python eval.py --label steg2 --compare steg1  # kor + visa skillnad mot baslinjen
+python eval.py --no-rerank --label steg1            # spara dense-baslinje
+python eval.py --rerank --label steg2 --compare steg1  # rerank + skillnad mot baslinjen
 ```
+
+`--rerank`/`--no-rerank` tvingar laget for korningen (annars galler `GRUNDEN_RERANK`),
+sa samma testset kan koras bada vagarna och jamforas.
 
 ## Anvanda som bibliotek
 

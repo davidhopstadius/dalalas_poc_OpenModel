@@ -14,8 +14,10 @@ import glob
 import json
 import os
 import re
+import sys
 from dataclasses import asdict, dataclass
 
+import httpx
 import numpy as np
 from openai import OpenAI
 
@@ -106,14 +108,63 @@ def rank(query_vec: np.ndarray, chunks: list[Chunk], mat: np.ndarray, k: int) ->
     return [(chunks[i], float(sims[i])) for i in top]
 
 
+def rerank_scores(query: str, texts: list[str], config: Config) -> list[tuple[int, float]]:
+    """Rerank-poang fran Grundens cross-encoder (BGE-reranker).
+
+    Returnerar (index_i_texts, score) sorterat med hogst score forst. Vid fel
+    (t.ex. endpoint nere under en demo) kastas httpx.HTTPError - anroparen
+    faller da tillbaka pa dense-ordningen.
+    """
+    if not texts:
+        return []
+    resp = httpx.post(
+        config.base_url.rstrip("/") + "/rerank",
+        headers={"Authorization": f"Bearer {config.api_key}"},
+        json={"model": config.rerank_model, "query": query, "texts": texts},
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return [(item["index"], float(item["score"])) for item in data]
+
+
+def search(
+    query: str,
+    query_vec: np.ndarray,
+    chunks: list[Chunk],
+    mat: np.ndarray,
+    config: Config,
+    k: int | None = None,
+) -> list[tuple[Chunk, float]]:
+    """Hamta de k basta chunkarna for en redan embeddad fraga.
+
+    Steg 1 (config.rerank=False): ren dense-sokning (cosine).
+    Steg 2 (config.rerank=True): hamta rerank_candidates dense-traffar och lat
+    BGE-rerankern omsortera dem. Samma flagga styr CLI (/rerank) och GUI:t, och
+    den lases vid varje fraga sa den kan slas av/pa live i ett kundmote.
+    """
+    k = k or config.rag_top_k
+    if not config.rerank:
+        return rank(query_vec, chunks, mat, k)
+
+    pool = max(config.rerank_candidates, k)
+    dense = rank(query_vec, chunks, mat, pool)
+    try:
+        order = rerank_scores(query, [c.text for c, _ in dense], config)
+    except httpx.HTTPError as err:
+        print(f"  [rerank misslyckades, anvander dense: {err}]", file=sys.stderr)
+        return dense[:k]
+    return [(dense[i][0], score) for i, score in order][:k]
+
+
 def retrieve(query: str, config: Config, k: int | None = None) -> list[tuple[Chunk, float]]:
-    """Hamta de k mest relevanta chunkarna for fragan (cosine-likhet)."""
+    """Hamta de k mest relevanta chunkarna for fragan (dense, ev. + rerank)."""
     k = k or config.rag_top_k
     chunks, mat = load_index(config)
     if not chunks or mat is None:
         return []
     query_vec = embed_texts([query], config)[0]
-    return rank(query_vec, chunks, mat, k)
+    return search(query, query_vec, chunks, mat, config, k)
 
 
 def format_results(results: list[tuple[Chunk, float]]) -> str:
