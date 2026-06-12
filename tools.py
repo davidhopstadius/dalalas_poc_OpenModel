@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 
 import httpx
+from openai import OpenAIError
 
 import rag
 
@@ -112,6 +113,14 @@ def run_tool(name: str, arguments: str, config) -> str:
             return f"Sokfel: {err}"
 
     if name == "doc_search":
-        return rag.format_results(rag.retrieve(args.get("query", ""), config))
+        try:
+            return rag.format_results(rag.retrieve(args.get("query", ""), config))
+        except OpenAIError as err:
+            # T.ex. embeddings-tjansten nere (502). Lat modellen svara snyggt
+            # i stallet for att hela fragan havererar - viktigt under demo.
+            return (
+                "Dokumentsokningen ar tillfalligt otillganglig (sok-tjansten svarar "
+                f"inte just nu: {err}). Be anvandaren forsoka igen om en stund."
+            )
 
     return f"Okant verktyg: {name}"
