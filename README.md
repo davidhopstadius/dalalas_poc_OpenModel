@@ -97,6 +97,35 @@ python eval.py --rerank --label steg2 --compare steg1  # rerank + skillnad mot b
 `--rerank`/`--no-rerank` tvingar laget for korningen (annars galler `GRUNDEN_RERANK`),
 sa samma testset kan koras bada vagarna och jamforas.
 
+## Webb-GUI
+
+Ett sleekt webbgranssnitt for falt-bruk (chatt med streaming, chathistorik,
+PDF-uppladdning till RAG och en installningssida dar man kan andra thinking,
+rerank m.m. och peka om till valfri OpenAI-kompatibel leverantor). FastAPI-backend
+(`server/`) ateranvander karnan rakt av; frontend i React + Vite + Tailwind (`web/`).
+
+**Forsta gangen** – installera och bygg frontenden:
+
+```powershell
+pip install -r requirements.txt
+cd web; npm install; npm run build; cd ..
+```
+
+**Kor (ett kommando, serverar bade API och GUI):**
+
+```powershell
+python run_web.py            # http://localhost:8000
+```
+
+**Utveckling med hot reload** (tva terminaler):
+
+```powershell
+python run_web.py --reload                 # backend pa :8000
+cd web; npm run dev                        # frontend pa :5173 (proxar /api)
+```
+
+Konversationer och sparade installningar hamnar i `data/` (gitignorerat).
+
 ## Anvanda som bibliotek
 
 ```python
@@ -114,3 +143,6 @@ print(bot.ask("Hej!"))
 - [rag.py](rag.py) – lokalt RAG-index: embeddings, sokning
 - [ingest.py](ingest.py) – CLI for att indexera PDF-dokument fran `documents/`
 - [eval.py](eval.py) – mater retrieval-kvalitet (recall@k) mot facit, sparar/jamfor korningar
+- [server/](server/) – FastAPI-backend for webb-GUI:t (chatt-SSE, SQLite, uppladdning, settings)
+- [web/](web/) – React-frontend (Vite + Tailwind)
+- [run_web.py](run_web.py) – startar webb-GUI:t

@@ -10,6 +10,12 @@ documents/*
 # RAG-index (genererade embeddings/chunks)
 rag_index/
 
+# Lokal data for webb-GUI:t (SQLite + sparade installningar)
+data/
+
+# Byggd frontend
+web/dist/
+
 # Slask-korningar av eval (namngivna baslinjer som steg1.json committas)
 eval/results/latest.json
 

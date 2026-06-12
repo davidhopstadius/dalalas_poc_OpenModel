@@ -113,13 +113,14 @@ class GrundenChat:
         ]
         return "".join(parts), tool_calls
 
-    def ask(self, prompt: str, on_tool=None, on_token=None) -> str:
+    def ask(self, prompt: str, on_tool=None, on_token=None, on_tool_result=None) -> str:
         """Skicka ett meddelande, kor ev. verktyg, och returnera svaret.
 
         Svaret streamas: on_token(text) anropas for varje bit medan den kommer.
-        on_tool(name, arguments) anropas nar modellen begar ett verktyg.
-        Bada ar valfria - utan dem fungerar metoden som vanligt och returnerar
-        hela svaret som strang (lampligt nar appen anvands som bibliotek).
+        on_tool(name, arguments) anropas nar modellen begar ett verktyg och
+        on_tool_result(name, result) nar verktyget kort (t.ex. for att plocka ut
+        kallcitat). Alla callbacks ar valfria - utan dem fungerar metoden som
+        vanligt och returnerar hela svaret som strang (vid biblioteksanvandning).
         """
         self.history.append({"role": "user", "content": prompt})
 
@@ -139,6 +140,8 @@ class GrundenChat:
                 if on_tool:
                     on_tool(fn["name"], fn["arguments"])
                 result = tools.run_tool(fn["name"], fn["arguments"], self.config)
+                if on_tool_result:
+                    on_tool_result(fn["name"], result)
                 self.history.append(
                     {
                         "role": "tool",
