@@ -31,6 +31,9 @@ class Config:
     thinking: bool = True
     search: bool = True
     brave_api_key: str | None = None
+    # Timeout (sek) for API-anrop. Backstop sa appen aldrig hanger oandligt nar
+    # Grunden ar seg. Generos default eftersom thinking-svar kan ta lang tid.
+    request_timeout: float = 300.0
     # RAG / dokumentsokning
     doc_search: bool = True
     embed_model: str = "bge-m3"
@@ -70,6 +73,7 @@ def load_config() -> Config:
         thinking=_as_bool(os.getenv("GRUNDEN_THINKING"), default=True),
         search=_as_bool(os.getenv("GRUNDEN_SEARCH"), default=True),
         brave_api_key=os.getenv("BRAVE_API_KEY") or None,
+        request_timeout=float(os.getenv("GRUNDEN_TIMEOUT", "300")),
         doc_search=_as_bool(os.getenv("GRUNDEN_DOC_SEARCH"), default=True),
         embed_model=os.getenv("GRUNDEN_EMBED_MODEL", "bge-m3"),
         index_dir=os.getenv("RAG_INDEX_DIR", "rag_index"),
