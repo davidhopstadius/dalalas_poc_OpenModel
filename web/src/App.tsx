@@ -5,6 +5,7 @@ import type { ConversationSummary, Settings, View } from './types'
 import Sidebar from './components/Sidebar'
 import ChatView from './components/ChatView'
 import DocumentsView from './components/DocumentsView'
+import DriftInfoView from './components/DriftInfoView'
 import SettingsView from './components/SettingsView'
 
 export default function App() {
@@ -95,6 +96,7 @@ export default function App() {
           />
         )}
         {view === 'documents' && <DocumentsView />}
+        {view === 'driftinfo' && <DriftInfoView />}
         {view === 'settings' && (
           <SettingsView settings={settings} onSaved={refreshSettings} />
         )}

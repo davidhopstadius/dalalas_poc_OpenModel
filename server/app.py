@@ -22,7 +22,7 @@ import ingest
 import rag
 from chat import GrundenChat
 from openai import OpenAIError
-from server import runtime, settings_store, store
+from server import pricing, runtime, settings_store, store
 
 app = FastAPI(title="PocGrunden GUI")
 
@@ -125,6 +125,13 @@ def chat(req: ChatRequest):
                 yield _sse({"type": "tool", "name": item[1], "query": item[2]})
             elif kind == "final":
                 msg_id = store.add_message(conv_id, "assistant", item[1], citations)
+                store.record_usage(
+                    conv_id,
+                    msg_id,
+                    cfg.model,
+                    bot.usage["prompt_tokens"],
+                    bot.usage["completion_tokens"],
+                )
                 yield _sse(
                     {
                         "type": "done",
@@ -240,6 +247,28 @@ def delete_document(doc_name: str):
     if not removed:
         raise HTTPException(404, "Dokumentet finns inte i indexet.")
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+#  Driftinfo (token-anvandning och kostnad)
+# --------------------------------------------------------------------------- #
+@app.get("/api/usage")
+def get_usage():
+    cfg = runtime.effective_config()
+    summary = store.usage_summary()
+    r = pricing.rates(cfg.model)
+    for key in ("last_message", "last_conversation", "today", "total"):
+        block = summary[key]
+        block["cost"] = round(
+            pricing.cost(cfg.model, block["prompt_tokens"], block["completion_tokens"]), 4
+        )
+    summary["model"] = cfg.model
+    summary["currency"] = pricing.CURRENCY
+    summary["rates"] = {
+        "input_per_mtok": r["input"],
+        "output_per_mtok": r["output"],
+    }
+    return summary
 
 
 # --------------------------------------------------------------------------- #

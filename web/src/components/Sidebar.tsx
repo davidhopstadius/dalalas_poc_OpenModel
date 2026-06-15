@@ -1,4 +1,4 @@
-import { FileText, Plus, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
+import { Activity, FileText, Plus, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { api } from '../api'
 import type { ConversationSummary, View } from '../types'
 
@@ -121,6 +121,12 @@ export default function Sidebar({
             label="Dokument"
             active={view === 'documents'}
             onClick={() => onGoTo('documents')}
+          />
+          <NavItem
+            icon={<Activity size={17} />}
+            label="Driftinfo"
+            active={view === 'driftinfo'}
+            onClick={() => onGoTo('driftinfo')}
           />
           <NavItem
             icon={<SettingsIcon size={17} />}

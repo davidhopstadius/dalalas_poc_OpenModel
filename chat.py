@@ -63,6 +63,13 @@ class GrundenChat:
             timeout=self.config.request_timeout,
         )
         self.history: list[Message] = []
+        # Tokenforbrukning for den senaste ask()-fragan (summerat over alla
+        # verktygsrundor). Nollstalls i borjan av varje ask().
+        self.usage: dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
         system = self.config.system_prompt or default_system_prompt(self.config)
         self.history.append({"role": "system", "content": system})
 
@@ -71,6 +78,8 @@ class GrundenChat:
             "model": self.config.model,
             "messages": self.history,
             "stream": True,
+            # Be API:t inkludera token-anvandning i en sista stream-chunk.
+            "stream_options": {"include_usage": True},
         }
         schemas = tools.schemas(self.config)
         if schemas:
@@ -80,12 +89,23 @@ class GrundenChat:
             kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
         return self.client.chat.completions.create(**kwargs)
 
-    def _consume_stream(self, stream, on_token) -> tuple[str, list[dict]]:
+    def _consume_stream(self, stream, on_token) -> tuple[str, list[dict], dict | None]:
         """Las en streamad completion: skriv ut innehallet via on_token medan det
-        kommer, och aterskapa ev. tool_calls (som kommer i fragment)."""
+        kommer, och aterskapa ev. tool_calls (som kommer i fragment).
+
+        Returnerar aven ev. token-usage (kommer i en separat sista chunk nar
+        stream_options.include_usage ar pa)."""
         parts: list[str] = []
         calls: dict[int, dict] = {}
+        usage: dict | None = None
         for chunk in stream:
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage is not None:
+                usage = {
+                    "prompt_tokens": chunk_usage.prompt_tokens or 0,
+                    "completion_tokens": chunk_usage.completion_tokens or 0,
+                    "total_tokens": chunk_usage.total_tokens or 0,
+                }
             if not chunk.choices:  # t.ex. tomma/usage-chunks
                 continue
             delta = chunk.choices[0].delta
@@ -111,7 +131,7 @@ class GrundenChat:
             }
             for _, c in sorted(calls.items())
         ]
-        return "".join(parts), tool_calls
+        return "".join(parts), tool_calls, usage
 
     def ask(self, prompt: str, on_tool=None, on_token=None, on_tool_result=None) -> str:
         """Skicka ett meddelande, kor ev. verktyg, och returnera svaret.
@@ -123,9 +143,13 @@ class GrundenChat:
         vanligt och returnerar hela svaret som strang (vid biblioteksanvandning).
         """
         self.history.append({"role": "user", "content": prompt})
+        self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         for _ in range(MAX_TOOL_ROUNDS):
-            content, tool_calls = self._consume_stream(self._create(), on_token)
+            content, tool_calls, usage = self._consume_stream(self._create(), on_token)
+            if usage:
+                for key in self.usage:
+                    self.usage[key] += usage.get(key, 0)
 
             assistant_msg: Message = {"role": "assistant", "content": content}
             if tool_calls:

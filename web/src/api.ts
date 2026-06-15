@@ -4,6 +4,7 @@ import type {
   DocumentSummary,
   Message,
   Settings,
+  UsageSummary,
 } from './types'
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
@@ -37,6 +38,8 @@ export const api = {
 
   deleteConversation: (id: string) =>
     fetch(`/api/conversations/${id}`, { method: 'DELETE' }).then((r) => jsonOrThrow(r)),
+
+  getUsage: () => fetch('/api/usage').then((r) => jsonOrThrow<UsageSummary>(r)),
 
   getSettings: () => fetch('/api/settings').then((r) => jsonOrThrow<Settings>(r)),
 

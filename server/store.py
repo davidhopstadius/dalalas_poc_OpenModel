@@ -6,6 +6,7 @@ verktygsanrop kors om vid varje ny fraga, sa de behover inte sparas.
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import sqlite3
@@ -42,6 +43,17 @@ def init_db() -> None:
                 created_at      REAL NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
+            CREATE TABLE IF NOT EXISTS usage (
+                id                TEXT PRIMARY KEY,
+                conversation_id   TEXT,
+                message_id        TEXT,
+                model             TEXT NOT NULL,
+                prompt_tokens     INTEGER NOT NULL,
+                completion_tokens INTEGER NOT NULL,
+                created_at        REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_usage_created ON usage(created_at);
+            CREATE INDEX IF NOT EXISTS idx_usage_conv ON usage(conversation_id);
             """
         )
 
@@ -114,3 +126,87 @@ def add_message(conv_id: str, role: str, content: str, citations: list | None = 
             "UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id)
         )
     return msg_id
+
+
+# --------------------------------------------------------------------------- #
+#  Token-anvandning (for Driftinfo)
+# --------------------------------------------------------------------------- #
+def record_usage(
+    conversation_id: str | None,
+    message_id: str | None,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+) -> None:
+    """Spara token-forbrukningen for en avslutad fraga."""
+    if not (prompt_tokens or completion_tokens):
+        return  # inget att spara (t.ex. om API:t inte returnerade usage)
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO usage (id, conversation_id, message_id, model, "
+            "prompt_tokens, completion_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                uuid.uuid4().hex,
+                conversation_id,
+                message_id,
+                model,
+                int(prompt_tokens),
+                int(completion_tokens),
+                time.time(),
+            ),
+        )
+
+
+def usage_summary() -> dict:
+    """Aggregerad token-anvandning: senaste fraga, senaste trad, idag, totalt."""
+    midnight = (
+        datetime.datetime.now()
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        .timestamp()
+    )
+    with _connect() as conn:
+        last = conn.execute(
+            "SELECT conversation_id, message_id FROM usage ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        last_conv_id = last["conversation_id"] if last else None
+        last_msg_id = last["message_id"] if last else None
+
+        def agg(where: str, params: tuple) -> dict:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(prompt_tokens), 0) AS p, "
+                "COALESCE(SUM(completion_tokens), 0) AS c, COUNT(*) AS n "
+                f"FROM usage {where}",
+                params,
+            ).fetchone()
+            return {
+                "prompt_tokens": row["p"],
+                "completion_tokens": row["c"],
+                "total_tokens": row["p"] + row["c"],
+                "requests": row["n"],
+            }
+
+        last_message = (
+            agg("WHERE message_id = ?", (last_msg_id,)) if last_msg_id else agg("WHERE 0", ())
+        )
+        last_conversation = (
+            agg("WHERE conversation_id = ?", (last_conv_id,))
+            if last_conv_id
+            else agg("WHERE 0", ())
+        )
+        today = agg("WHERE created_at >= ?", (midnight,))
+        total = agg("", ())
+
+        title = None
+        if last_conv_id:
+            trow = conn.execute(
+                "SELECT title FROM conversations WHERE id = ?", (last_conv_id,)
+            ).fetchone()
+            title = trow["title"] if trow else None
+
+    last_conversation["conversation_title"] = title
+    return {
+        "last_message": last_message,
+        "last_conversation": last_conversation,
+        "today": today,
+        "total": total,
+    }

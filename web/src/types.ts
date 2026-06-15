@@ -39,4 +39,23 @@ export interface Settings {
   has_brave_key: boolean
 }
 
-export type View = 'chat' | 'documents' | 'settings'
+export interface UsageBlock {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  requests: number
+  cost: number
+  conversation_title?: string | null
+}
+
+export interface UsageSummary {
+  last_message: UsageBlock
+  last_conversation: UsageBlock
+  today: UsageBlock
+  total: UsageBlock
+  model: string
+  currency: string
+  rates: { input_per_mtok: number; output_per_mtok: number }
+}
+
+export type View = 'chat' | 'documents' | 'driftinfo' | 'settings'
