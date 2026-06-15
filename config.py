@@ -37,6 +37,10 @@ class Config:
     # RAG / dokumentsokning
     doc_search: bool = True
     embed_model: str = "bge-m3"
+    # Embeddings-backend: "grunden" (API, bge-m3) eller "local" (fastembed,
+    # kors i processen). Lokalt gor RAG oberoende av Grundens embeddings-uptime.
+    embed_backend: str = "grunden"
+    local_embed_model: str = "intfloat/multilingual-e5-large"
     index_dir: str = "rag_index"
     rag_top_k: int = 5
     # Steg 2: reranking (BGE cross-encoder). Slas pa/av i runtime - i CLI med
@@ -76,6 +80,8 @@ def load_config() -> Config:
         request_timeout=float(os.getenv("GRUNDEN_TIMEOUT", "300")),
         doc_search=_as_bool(os.getenv("GRUNDEN_DOC_SEARCH"), default=True),
         embed_model=os.getenv("GRUNDEN_EMBED_MODEL", "bge-m3"),
+        embed_backend=os.getenv("GRUNDEN_EMBED_BACKEND", "grunden").strip().lower(),
+        local_embed_model=os.getenv("GRUNDEN_LOCAL_EMBED_MODEL", "intfloat/multilingual-e5-large"),
         index_dir=os.getenv("RAG_INDEX_DIR", "rag_index"),
         rag_top_k=int(os.getenv("RAG_TOP_K", "5")),
         rerank=_as_bool(os.getenv("GRUNDEN_RERANK"), default=True),

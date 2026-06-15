@@ -3,6 +3,7 @@ python-dotenv>=1.0
 pymupdf>=1.24
 numpy>=1.26
 httpx>=0.27
+fastembed>=0.8  # lokal embeddings-backend (ONNX/CPU)
 fastapi>=0.115
 uvicorn[standard]>=0.30
 python-multipart>=0.0.9

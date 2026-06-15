@@ -38,12 +38,38 @@ def _client(config: Config) -> OpenAI:
     return OpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
+# Lat-initierad lokal embeddings-modell (fastembed/ONNX, CPU). Laddas en gang
+# och ateranvands - forsta anropet laddar ner modellen (~2 GB) till cache.
+_local_embedder = None
+_local_embedder_name: str | None = None
+
+
+def _local_embed(texts: list[str], config: Config, is_query: bool) -> np.ndarray:
+    """Embed lokalt via fastembed. e5-modeller kraver query/passage-prefix -
+    fastembeds query_embed/passage_embed satter ratt prefix per modell."""
+    global _local_embedder, _local_embedder_name
+    if _local_embedder is None or _local_embedder_name != config.local_embed_model:
+        from fastembed import TextEmbedding  # tung import - bara nar lokal backend anvands
+
+        _local_embedder = TextEmbedding(model_name=config.local_embed_model)
+        _local_embedder_name = config.local_embed_model
+    gen = _local_embedder.query_embed(texts) if is_query else _local_embedder.passage_embed(texts)
+    return np.array(list(gen), dtype=np.float32)
+
+
 def _safe_name(doc: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", doc)
 
 
-def embed_texts(texts: list[str], config: Config) -> np.ndarray:
-    """Embed en lista texter via Grunden (bge-m3). Batchar anropen."""
+def embed_texts(texts: list[str], config: Config, is_query: bool = False) -> np.ndarray:
+    """Embed en lista texter. Backend valjs av config.embed_backend.
+
+    is_query skiljer fragor fran dokument - kravs av e5-modeller (lokal backend)
+    och ignoreras av Grundens bge-m3.
+    """
+    if config.embed_backend == "local":
+        return _local_embed(texts, config, is_query)
+
     client = _client(config)
     vectors: list[list[float]] = []
     for i in range(0, len(texts), EMBED_BATCH):
@@ -163,7 +189,7 @@ def retrieve(query: str, config: Config, k: int | None = None) -> list[tuple[Chu
     chunks, mat = load_index(config)
     if not chunks or mat is None:
         return []
-    query_vec = embed_texts([query], config)[0]
+    query_vec = embed_texts([query], config, is_query=True)[0]
     return search(query, query_vec, chunks, mat, config, k)
 
 

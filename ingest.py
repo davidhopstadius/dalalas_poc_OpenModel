@@ -124,7 +124,8 @@ def main(argv: list[str]) -> int:
         if not chunks:
             print(f"  (inga textchunks hittades, hoppar over)")
             continue
-        print(f"  {len(chunks)} chunks. Embeddar via {config.embed_model} ...")
+        embed_via = config.local_embed_model if config.embed_backend == "local" else config.embed_model
+        print(f"  {len(chunks)} chunks. Embeddar via {embed_via} ...")
         embeddings = rag.embed_texts([c.text for c in chunks], config)
         base = rag.save_doc(config, doc_name, chunks, embeddings)
         print(f"  Sparat: {base}.jsonl / .npy")
