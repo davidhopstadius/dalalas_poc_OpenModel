@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Menu } from 'lucide-react'
+import { KeyRound, Menu } from 'lucide-react'
 import { api } from './api'
 import type { ConversationSummary, Settings, View } from './types'
 import Sidebar from './components/Sidebar'
@@ -78,8 +78,11 @@ export default function App() {
           >
             <Menu size={18} />
           </button>
-          <span className="font-display text-[15px] font-semibold tracking-tight">
-            Grunden<span className="text-accent">.</span>fält
+          <span className="flex items-center gap-2 font-display text-[15px] font-semibold tracking-tight">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent text-white">
+              <KeyRound size={15} strokeWidth={2.2} />
+            </span>
+            Låsmontörens bästa vän
           </span>
         </header>
 

@@ -71,7 +71,7 @@ export default function Composer({ onSend, onStop, busy, disabled }: Props) {
           )}
         </div>
         <p className="mt-2 text-center text-[11px] text-ink-faint">
-          Grunden kan ha fel — kontrollera kritiska uppgifter mot manualen.
+          AI:n kan ha fel — kontrollera kritiska uppgifter mot manualen.
         </p>
       </div>
     </div>

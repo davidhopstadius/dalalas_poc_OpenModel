@@ -1,4 +1,4 @@
-import { Activity, FileText, Plus, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
+import { Activity, FileText, KeyRound, Plus, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { api } from '../api'
 import type { ConversationSummary, View } from '../types'
 
@@ -52,12 +52,12 @@ export default function Sidebar({
         {/* Varumarke */}
         <div className="flex items-center justify-between px-5 pb-4 pt-5">
           <div className="flex items-center gap-2.5">
-            <div className="grid h-8 w-8 place-items-center rounded-[10px] bg-accent text-[15px] font-semibold text-white shadow-sm">
-              G
+            <div className="grid h-8 w-8 place-items-center rounded-[10px] bg-accent text-white shadow-sm">
+              <KeyRound size={17} strokeWidth={2.2} />
             </div>
             <div className="leading-tight">
-              <div className="font-display text-[15px] font-semibold tracking-tight">
-                Grunden<span className="text-accent">.</span>fält
+              <div className="font-display text-[14.5px] font-semibold leading-tight tracking-tight">
+                Låsmontörens bästa vän
               </div>
               <div className="text-[11px] text-ink-faint">Låsteknik-assistent</div>
             </div>
