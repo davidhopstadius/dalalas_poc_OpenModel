@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { BookText, Search, Sparkles } from 'lucide-react'
+import { BookText, KeyRound, Search, Sparkles } from 'lucide-react'
 import { api, streamChat } from '../api'
 import type { Citation, Message as Msg, Settings } from '../types'
 import Message from './Message'
@@ -216,8 +216,8 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center pt-[12vh] text-center">
-      <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-accent text-2xl font-semibold text-white shadow-sm">
-        G
+      <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-accent text-white shadow-sm">
+        <KeyRound size={28} strokeWidth={2} />
       </div>
       <h1 className="font-display text-[26px] font-semibold tracking-tight">
         Hej — vad behöver du veta?
