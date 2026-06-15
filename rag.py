@@ -57,6 +57,26 @@ def _local_embed(texts: list[str], config: Config, is_query: bool) -> np.ndarray
     return np.array(list(gen), dtype=np.float32)
 
 
+# Lat-initierad lokal reranker (fastembed cross-encoder, CPU). Som embeddern:
+# laddas en gang, forsta anropet laddar ner modellen (~1 GB) till cache.
+_local_reranker = None
+_local_reranker_name: str | None = None
+
+
+def _local_rerank(query: str, texts: list[str], config: Config) -> list[tuple[int, float]]:
+    """Rerank lokalt via fastembeds cross-encoder. Returnerar (index, score)
+    sorterat med hogst score forst - samma kontrakt som Grunden-vagen."""
+    global _local_reranker, _local_reranker_name
+    if _local_reranker is None or _local_reranker_name != config.local_rerank_model:
+        from fastembed.rerank.cross_encoder import TextCrossEncoder  # tung import - bara vid lokal rerank
+
+        _local_reranker = TextCrossEncoder(model_name=config.local_rerank_model)
+        _local_reranker_name = config.local_rerank_model
+    scores = list(_local_reranker.rerank(query, texts))  # en score per text, i indata-ordning
+    ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+    return [(i, float(s)) for i, s in ranked]
+
+
 def _safe_name(doc: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", doc)
 
@@ -143,6 +163,9 @@ def rerank_scores(query: str, texts: list[str], config: Config) -> list[tuple[in
     """
     if not texts:
         return []
+    if config.rerank_backend == "local":
+        return _local_rerank(query, texts, config)
+
     resp = httpx.post(
         config.base_url.rstrip("/") + "/rerank",
         headers={"Authorization": f"Bearer {config.api_key}"},
@@ -177,7 +200,9 @@ def search(
     dense = rank(query_vec, chunks, mat, pool)
     try:
         order = rerank_scores(query, [c.text for c, _ in dense], config)
-    except httpx.HTTPError as err:
+    except Exception as err:
+        # Grundens rerank nere (424/502) eller lokal modell som inte gick att
+        # ladda -> falla tillbaka pa dense-ordningen sa fragan aldrig kraschar.
         print(f"  [rerank misslyckades, anvander dense: {err}]", file=sys.stderr)
         return dense[:k]
     return [(dense[i][0], score) for i, score in order][:k]

@@ -48,6 +48,10 @@ class Config:
     rerank: bool = True
     rerank_model: str = "bge-reranker-v2-m3"
     rerank_candidates: int = 20  # antal dense-traffar som skickas till rerankern
+    # Rerank-backend: "grunden" (API) eller "local" (fastembed cross-encoder,
+    # kors i processen). Lokalt gor reranking oberoende av Grundens uptime.
+    rerank_backend: str = "grunden"
+    local_rerank_model: str = "jinaai/jina-reranker-v2-base-multilingual"
 
     @property
     def search_enabled(self) -> bool:
@@ -87,4 +91,6 @@ def load_config() -> Config:
         rerank=_as_bool(os.getenv("GRUNDEN_RERANK"), default=True),
         rerank_model=os.getenv("GRUNDEN_RERANK_MODEL", "bge-reranker-v2-m3"),
         rerank_candidates=int(os.getenv("RAG_RERANK_CANDIDATES", "20")),
+        rerank_backend=os.getenv("GRUNDEN_RERANK_BACKEND", "grunden").strip().lower(),
+        local_rerank_model=os.getenv("GRUNDEN_LOCAL_RERANK_MODEL", "jinaai/jina-reranker-v2-base-multilingual"),
     )
