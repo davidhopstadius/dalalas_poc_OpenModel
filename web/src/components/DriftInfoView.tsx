@@ -5,19 +5,28 @@ import type { UsageBlock, UsageSummary } from '../types'
 
 const nf = new Intl.NumberFormat('sv-SE')
 
+const PROVIDER_LABELS: Record<string, string> = {
+  grunden: 'Grunden.ai',
+  berget: 'Berget AI',
+  anthropic: 'Anthropic',
+}
+
 function tokens(n: number): string {
   return nf.format(n)
 }
 
-function kr(amount: number): string {
+function money(amount: number, currency: string): string {
   // Sma belopp: visa fler decimaler sa det inte avrundas till 0.
   const decimals = amount > 0 && amount < 1 ? 4 : 2
-  return (
-    amount.toLocaleString('sv-SE', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: decimals,
-    }) + ' kr'
-  )
+  const num = amount.toLocaleString('sv-SE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: decimals,
+  })
+  return currency === 'USD' ? `$${num}` : `${num} kr`
+}
+
+function latency(ms: number): string {
+  return (ms / 1000).toLocaleString('sv-SE', { maximumFractionDigits: 1 }) + ' s'
 }
 
 export default function DriftInfoView() {
@@ -66,18 +75,24 @@ export default function DriftInfoView() {
         {usage && (
           <div className="mt-6 rounded-2xl border border-line bg-surface px-5 py-4">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-              Leverantör &amp; pris
+              Aktiv leverantör &amp; pris
             </div>
             <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1">
               <div className="text-[15px] font-medium text-ink">
-                Grunden.ai · <span className="mono">{usage.model}</span>
+                {PROVIDER_LABELS[usage.provider] ?? usage.provider} ·{' '}
+                <span className="mono">{usage.model}</span>
               </div>
               <div className="mono text-[13px] text-ink-soft">
-                {tokens(usage.rates.input_per_mtok)} kr / 1M in
+                {money(usage.rates.input_per_mtok, usage.rates.currency)} / 1M in
               </div>
               <div className="mono text-[13px] text-ink-soft">
-                {tokens(usage.rates.output_per_mtok)} kr / 1M ut
+                {money(usage.rates.output_per_mtok, usage.rates.currency)} / 1M ut
               </div>
+              {usage.last_latency_ms != null && (
+                <div className="mono text-[13px] text-ink-soft">
+                  senaste svarstid {latency(usage.last_latency_ms)}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -100,25 +115,25 @@ export default function DriftInfoView() {
               title="Senaste fråga"
               subtitle="Den senast ställda frågan"
               block={usage.last_message}
-              currency={usage.currency}
+              activeCurrency={usage.rates.currency}
             />
             <UsageCard
               title="Senaste tråd"
               subtitle={usage.last_conversation.conversation_title || 'Inget aktivt samtal'}
               block={usage.last_conversation}
-              currency={usage.currency}
+              activeCurrency={usage.rates.currency}
             />
             <UsageCard
               title="Idag"
               subtitle="Sedan midnatt"
               block={usage.today}
-              currency={usage.currency}
+              activeCurrency={usage.rates.currency}
             />
             <UsageCard
               title="Totalt"
               subtitle="Sedan start"
               block={usage.total}
-              currency={usage.currency}
+              activeCurrency={usage.rates.currency}
               accent
             />
           </div>
@@ -126,9 +141,10 @@ export default function DriftInfoView() {
 
         {usage && (
           <p className="mt-6 text-[12px] leading-relaxed text-ink-faint">
-            Kostnaden är beräknad utifrån Grunden.ai:s listpris (standardtakt) och avser endast
-            chattmodellen. Embeddings och reranker debiteras inte. Siffrorna räknas från och med att
-            den här funktionen togs i bruk.
+            Kostnaden är beräknad utifrån respektive leverantörs listpris och avser endast
+            chattmodellen — embeddings och reranker debiteras inte. Belopp visas per valuta (kr för
+            Grunden/Berget, $ för Anthropic) utan växelkurs. Siffrorna räknas från och med att den
+            här funktionen togs i bruk.
           </p>
         )}
       </div>
@@ -140,15 +156,19 @@ function UsageCard({
   title,
   subtitle,
   block,
-  currency,
+  activeCurrency,
   accent,
 }: {
   title: string
   subtitle: string
   block: UsageBlock
-  currency: string
+  activeCurrency: string
   accent?: boolean
 }) {
+  const costEntries = Object.entries(block.costs ?? {})
+  const costText = costEntries.length
+    ? costEntries.map(([cur, amt]) => money(amt, cur)).join(' + ')
+    : money(0, activeCurrency)
   return (
     <div
       className={`rounded-2xl border bg-surface p-5 ${
@@ -173,10 +193,7 @@ function UsageCard({
         <span className="flex items-center gap-1.5 text-[12px] font-medium text-ink-soft">
           <Coins size={14} className="text-accent" /> Kostnad
         </span>
-        <span className="mono text-[15px] font-semibold text-ink">
-          {kr(block.cost)}
-          {currency !== 'SEK' && <span className="ml-1 text-[11px] text-ink-faint">{currency}</span>}
-        </span>
+        <span className="mono text-[15px] font-semibold text-ink">{costText}</span>
       </div>
     </div>
   )

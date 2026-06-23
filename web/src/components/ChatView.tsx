@@ -177,7 +177,7 @@ function ChatHeader({ settings }: { settings: Settings | null }) {
     <div className="hidden items-center justify-between border-b border-line px-6 py-3 md:flex">
       <div className="flex items-center gap-2 text-[13px] text-ink-soft">
         <Sparkles size={15} className="text-accent" />
-        <span className="mono text-ink">{settings.model}</span>
+        <span className="mono text-ink">{settings.active_model || settings.model}</span>
       </div>
       <div className="flex items-center gap-1.5">
         <Toggle label="Thinking" on={settings.thinking} />

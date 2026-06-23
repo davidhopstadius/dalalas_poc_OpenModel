@@ -22,6 +22,8 @@ export interface DocumentSummary {
   pages: number
 }
 
+export type Provider = 'grunden' | 'berget' | 'anthropic'
+
 export interface Settings {
   base_url: string
   model: string
@@ -37,6 +39,16 @@ export interface Settings {
   request_timeout: number
   has_api_key: boolean
   has_brave_key: boolean
+  // Multi-leverantör
+  provider: Provider
+  active_model: string
+  berget_base_url: string
+  berget_model: string
+  berget_price_in: number
+  berget_price_out: number
+  anthropic_model: string
+  has_berget_key: boolean
+  has_anthropic_key: boolean
 }
 
 export interface UsageBlock {
@@ -44,7 +56,7 @@ export interface UsageBlock {
   completion_tokens: number
   total_tokens: number
   requests: number
-  cost: number
+  costs: Record<string, number>
   conversation_title?: string | null
 }
 
@@ -53,9 +65,10 @@ export interface UsageSummary {
   last_conversation: UsageBlock
   today: UsageBlock
   total: UsageBlock
+  provider: string
   model: string
-  currency: string
-  rates: { input_per_mtok: number; output_per_mtok: number }
+  last_latency_ms: number | null
+  rates: { input_per_mtok: number; output_per_mtok: number; currency: string }
 }
 
 export type View = 'chat' | 'documents' | 'driftinfo' | 'settings'

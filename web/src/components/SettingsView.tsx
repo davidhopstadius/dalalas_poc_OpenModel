@@ -1,14 +1,25 @@
 import { useEffect, useState } from 'react'
 import { Check, Loader2 } from 'lucide-react'
 import { api } from '../api'
-import type { Settings } from '../types'
+import type { Provider, Settings } from '../types'
 
 interface Props {
   settings: Settings | null
   onSaved: () => void
 }
 
-type Form = Settings & { api_key: string; brave_api_key: string }
+type Form = Settings & {
+  api_key: string
+  brave_api_key: string
+  berget_api_key: string
+  anthropic_api_key: string
+}
+
+const PROVIDERS: { id: Provider; label: string }[] = [
+  { id: 'grunden', label: 'Grunden' },
+  { id: 'berget', label: 'Berget' },
+  { id: 'anthropic', label: 'Anthropic' },
+]
 
 export default function SettingsView({ settings, onSaved }: Props) {
   const [form, setForm] = useState<Form | null>(null)
@@ -16,7 +27,14 @@ export default function SettingsView({ settings, onSaved }: Props) {
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    if (settings) setForm({ ...settings, api_key: '', brave_api_key: '' })
+    if (settings)
+      setForm({
+        ...settings,
+        api_key: '',
+        brave_api_key: '',
+        berget_api_key: '',
+        anthropic_api_key: '',
+      })
   }, [settings])
 
   if (!form) {
@@ -36,8 +54,14 @@ export default function SettingsView({ settings, onSaved }: Props) {
     setSaving(true)
     try {
       const patch: Record<string, unknown> = {
+        provider: form.provider,
         base_url: form.base_url,
         model: form.model,
+        berget_base_url: form.berget_base_url,
+        berget_model: form.berget_model,
+        berget_price_in: form.berget_price_in,
+        berget_price_out: form.berget_price_out,
+        anthropic_model: form.anthropic_model,
         system_prompt: form.system_prompt,
         thinking: form.thinking,
         search: form.search,
@@ -51,6 +75,8 @@ export default function SettingsView({ settings, onSaved }: Props) {
       }
       if (form.api_key.trim()) patch.api_key = form.api_key.trim()
       if (form.brave_api_key.trim()) patch.brave_api_key = form.brave_api_key.trim()
+      if (form.berget_api_key.trim()) patch.berget_api_key = form.berget_api_key.trim()
+      if (form.anthropic_api_key.trim()) patch.anthropic_api_key = form.anthropic_api_key.trim()
       await api.updateSettings(patch)
       setSaved(true)
       onSaved()
@@ -68,23 +94,86 @@ export default function SettingsView({ settings, onSaved }: Props) {
         </p>
 
         {/* Leverantör */}
-        <Section title="AI-leverantör" hint="Peka base_url till valfri OpenAI-kompatibel tjänst för att byta leverantör.">
-          <Field label="Base URL">
-            <Input value={form.base_url} onChange={(v) => set('base_url', v)} mono />
-          </Field>
-          <Field label="Modell">
-            <Input value={form.model} onChange={(v) => set('model', v)} mono />
-          </Field>
-          <Field label="API-nyckel" hint={form.has_api_key ? 'En nyckel är redan satt — lämna tomt för att behålla.' : 'Ingen nyckel satt.'}>
-            <Input
-              value={form.api_key}
-              onChange={(v) => set('api_key', v)}
-              type="password"
-              placeholder={form.has_api_key ? '•••••••••••• (satt)' : 'sk-…'}
-              mono
-            />
-          </Field>
-          <Field label="Brave-nyckel (webbsök)" hint={form.has_brave_key ? 'Satt.' : 'Krävs för webbsökning.'}>
+        <Section title="AI-leverantör" hint="Välj vilken leverantör som besvarar frågorna. Byt fritt — RAG-indexet (dokumentsökningen) påverkas inte.">
+          <div className="grid grid-cols-3 gap-2">
+            {PROVIDERS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => set('provider', p.id)}
+                className={`rounded-lg border px-3 py-2 text-[13.5px] font-medium transition
+                  ${form.provider === p.id ? 'border-accent bg-accent-soft text-accent-hover' : 'border-line bg-surface-raised text-ink-soft hover:text-ink'}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {form.provider === 'grunden' && (
+            <>
+              <Field label="Base URL">
+                <Input value={form.base_url} onChange={(v) => set('base_url', v)} mono />
+              </Field>
+              <Field label="Modell">
+                <Input value={form.model} onChange={(v) => set('model', v)} mono />
+              </Field>
+              <Field label="API-nyckel" hint={form.has_api_key ? 'En nyckel är redan satt — lämna tomt för att behålla.' : 'Ingen nyckel satt.'}>
+                <Input
+                  value={form.api_key}
+                  onChange={(v) => set('api_key', v)}
+                  type="password"
+                  placeholder={form.has_api_key ? '•••••••••••• (satt)' : 'sk-…'}
+                  mono
+                />
+              </Field>
+            </>
+          )}
+
+          {form.provider === 'berget' && (
+            <>
+              <Field label="Base URL">
+                <Input value={form.berget_base_url} onChange={(v) => set('berget_base_url', v)} mono />
+              </Field>
+              <Field label="Modell" hint="Berget-modellens id (OpenAI-kompatibelt). Hämtas från din Berget-konsol.">
+                <Input value={form.berget_model} onChange={(v) => set('berget_model', v)} mono />
+              </Field>
+              <Field label="API-nyckel" hint={form.has_berget_key ? 'En nyckel är redan satt — lämna tomt för att behålla.' : 'Ingen nyckel satt.'}>
+                <Input
+                  value={form.berget_api_key}
+                  onChange={(v) => set('berget_api_key', v)}
+                  type="password"
+                  placeholder={form.has_berget_key ? '•••••••••••• (satt)' : 'sk-…'}
+                  mono
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Pris in (kr/1M)" hint="För kostnadsanalysen.">
+                  <NumberInput value={form.berget_price_in} onChange={(v) => set('berget_price_in', v)} />
+                </Field>
+                <Field label="Pris ut (kr/1M)">
+                  <NumberInput value={form.berget_price_out} onChange={(v) => set('berget_price_out', v)} />
+                </Field>
+              </div>
+            </>
+          )}
+
+          {form.provider === 'anthropic' && (
+            <>
+              <Field label="Modell" hint="T.ex. claude-sonnet-4-6, claude-opus-4-8 eller claude-haiku-4-5.">
+                <Input value={form.anthropic_model} onChange={(v) => set('anthropic_model', v)} mono />
+              </Field>
+              <Field label="API-nyckel" hint={form.has_anthropic_key ? 'En nyckel är redan satt — lämna tomt för att behålla.' : 'Ingen nyckel satt.'}>
+                <Input
+                  value={form.anthropic_api_key}
+                  onChange={(v) => set('anthropic_api_key', v)}
+                  type="password"
+                  placeholder={form.has_anthropic_key ? '•••••••••••• (satt)' : 'sk-ant-…'}
+                  mono
+                />
+              </Field>
+            </>
+          )}
+
+          <Field label="Brave-nyckel (webbsök)" hint={form.has_brave_key ? 'Satt. Gäller alla leverantörer.' : 'Krävs för webbsökning.'}>
             <Input
               value={form.brave_api_key}
               onChange={(v) => set('brave_api_key', v)}

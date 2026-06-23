@@ -43,7 +43,14 @@ export const api = {
 
   getSettings: () => fetch('/api/settings').then((r) => jsonOrThrow<Settings>(r)),
 
-  updateSettings: (patch: Partial<Settings> & { api_key?: string; brave_api_key?: string }) =>
+  updateSettings: (
+    patch: Partial<Settings> & {
+      api_key?: string
+      brave_api_key?: string
+      berget_api_key?: string
+      anthropic_api_key?: string
+    },
+  ) =>
     fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
