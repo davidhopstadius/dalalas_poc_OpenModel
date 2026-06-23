@@ -12,6 +12,7 @@ eller som interaktiv CLI:
 """
 from __future__ import annotations
 
+import json
 from datetime import date
 
 from openai import OpenAI, OpenAIError
@@ -53,14 +54,22 @@ def default_system_prompt(config: Config) -> str:
 
 
 class GrundenChat:
-    """Haller en konversation med historik mot Grunden.ai."""
+    """Konversation mot en OpenAI-kompatibel leverantor (Grunden eller Berget).
+
+    Anslutningen (base_url/model/api_key) tas fran config.active_llm(), sa samma
+    klass driver bade Grunden (default, oforandrat beteende) och Berget.
+    """
 
     def __init__(self, config: Config | None = None) -> None:
         self.config = config or load_config()
+        conn = self.config.active_llm()
+        self.model = conn.model
         self.client = OpenAI(
-            api_key=self.config.api_key,
-            base_url=self.config.base_url,
+            api_key=conn.api_key,
+            base_url=conn.base_url,
             timeout=self.config.request_timeout,
+            # Tygla backoff sa en trog leverantor inte staplar langa vantor.
+            max_retries=1,
         )
         self.history: list[Message] = []
         # Tokenforbrukning for den senaste ask()-fragan (summerat over alla
@@ -75,7 +84,7 @@ class GrundenChat:
 
     def _create(self):
         kwargs = {
-            "model": self.config.model,
+            "model": self.model,
             "messages": self.history,
             "stream": True,
             # Be API:t inkludera token-anvandning i en sista stream-chunk.
@@ -85,8 +94,10 @@ class GrundenChat:
         if schemas:
             kwargs["tools"] = schemas
             kwargs["tool_choice"] = "auto"
-        if self.config.thinking:
-            kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
+        # thinking-flaggan ar Grunden-specifik (boolean i extra_body). Skicka den
+        # bara for Grunden - Berget-modeller kanner inte nodvandigtvis till den.
+        if self.config.provider == "grunden":
+            kwargs["extra_body"] = {"thinking": self.config.thinking}
         return self.client.chat.completions.create(**kwargs)
 
     def _consume_stream(self, stream, on_token) -> tuple[str, list[dict], dict | None]:
@@ -176,9 +187,142 @@ class GrundenChat:
 
         return "(Avbrot: for manga verktygsrundor utan slutgiltigt svar.)"
 
+    def seed_history(self, prior: list[dict]) -> None:
+        """Seeda historiken med tidigare turer (systemprompten ligger forst)."""
+        self.history = self.history[:1] + [
+            {"role": m["role"], "content": m["content"]}
+            for m in prior
+            if m["role"] in ("user", "assistant") and m["content"]
+        ]
+
     def reset(self) -> None:
         """Nollstall historiken (behaller systemprompten)."""
         self.history = [m for m in self.history if m["role"] == "system"]
+
+
+def _anthropic_text(message) -> str:
+    """Plocka ut all text ur ett Anthropic-svars content-block."""
+    return "".join(
+        b.text for b in message.content if getattr(b, "type", None) == "text"
+    )
+
+
+class AnthropicChat:
+    """Konversation mot Anthropics Messages-API (Claude).
+
+    Samma publika granssnitt som GrundenChat (ask/seed_history/reset, .usage,
+    .history, .config) sa servern och CLI:t kan anvanda klasserna utbytbart via
+    build_chat(). Systemprompten skickas separat (Anthropic-konvention) och
+    historiken innehaller bara user/assistant-turer.
+    """
+
+    def __init__(self, config: Config | None = None) -> None:
+        import anthropic  # tung/valfri import - bara nar Anthropic-leverantoren anvands
+
+        self.config = config or load_config()
+        conn = self.config.active_llm()
+        self.model = conn.model
+        self.client = anthropic.Anthropic(
+            api_key=conn.api_key,
+            timeout=self.config.request_timeout,
+            max_retries=1,
+        )
+        self.system = self.config.system_prompt or default_system_prompt(self.config)
+        self.history: list[Message] = []  # endast user/assistant
+        self.usage: dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+
+    def seed_history(self, prior: list[dict]) -> None:
+        self.history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in prior
+            if m["role"] in ("user", "assistant") and m["content"]
+        ]
+
+    def _create_kwargs(self) -> dict:
+        kwargs: dict = {
+            "model": self.model,
+            "system": self.system,
+            "messages": self.history,
+            "max_tokens": self.config.anthropic_max_tokens,
+        }
+        schemas = tools.anthropic_schemas(self.config)
+        if schemas:
+            kwargs["tools"] = schemas
+        if self.config.thinking:
+            # Stabil form som Claude 4.x thinking-modeller stoder. budget < max_tokens.
+            budget = max(1024, min(4000, self.config.anthropic_max_tokens - 1024))
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+        return kwargs
+
+    def _add_usage(self, usage) -> None:
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cache_create = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        self.usage["prompt_tokens"] += (usage.input_tokens or 0) + cache_read + cache_create
+        self.usage["completion_tokens"] += usage.output_tokens or 0
+        self.usage["total_tokens"] = (
+            self.usage["prompt_tokens"] + self.usage["completion_tokens"]
+        )
+
+    def ask(self, prompt: str, on_tool=None, on_token=None, on_tool_result=None) -> str:
+        self.history.append({"role": "user", "content": prompt})
+        self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        for _ in range(MAX_TOOL_ROUNDS):
+            with self.client.messages.stream(**self._create_kwargs()) as stream:
+                for event in stream:
+                    if event.type == "content_block_delta" and getattr(
+                        event.delta, "type", None
+                    ) == "text_delta":
+                        if on_token:
+                            on_token(event.delta.text)
+                final = stream.get_final_message()
+
+            self._add_usage(final.usage)
+            # Spara assistentens rasvar (inkl. ev. thinking/tool_use-block) i historiken.
+            self.history.append({"role": "assistant", "content": final.content})
+
+            if final.stop_reason != "tool_use":
+                return _anthropic_text(final)
+
+            tool_results = []
+            for block in final.content:
+                if getattr(block, "type", None) != "tool_use":
+                    continue
+                arguments = json.dumps(block.input, ensure_ascii=False)
+                if on_tool:
+                    on_tool(block.name, arguments)
+                result = tools.run_tool(block.name, arguments, self.config)
+                if on_tool_result:
+                    on_tool_result(block.name, result)
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result,
+                    }
+                )
+            self.history.append({"role": "user", "content": tool_results})
+
+        return "(Avbrot: for manga verktygsrundor utan slutgiltigt svar.)"
+
+    def reset(self) -> None:
+        """Nollstall historiken (systemprompten ligger separat och behalls)."""
+        self.history = []
+
+
+def build_chat(config: Config | None = None):
+    """Returnera ratt chatt-klient for den aktiva leverantoren.
+
+    Grunden/Berget -> GrundenChat (OpenAI-kompatibel). Anthropic -> AnthropicChat.
+    """
+    cfg = config or load_config()
+    if cfg.active_llm().kind == "anthropic":
+        return AnthropicChat(cfg)
+    return GrundenChat(cfg)
 
 
 HELP = """Kommandon:
@@ -196,16 +340,17 @@ def _status_line(config: Config) -> str:
     docs = "pa" if (config.doc_search and rag.has_index(config)) else "av"
     think = "pa" if config.thinking else "av"
     rerank = "pa" if config.rerank else "av"
+    conn = config.active_llm()
     return (
-        f"modell: {config.model} | webbsok: {web} | doksok: {docs} | "
-        f"rerank: {rerank} | thinking: {think}"
+        f"leverantor: {config.provider} | modell: {conn.model} | webbsok: {web} | "
+        f"doksok: {docs} | rerank: {rerank} | thinking: {think}"
     )
 
 
 def run() -> int:
     """Interaktiv chatt-loop. Returnerar processens exit-kod."""
     try:
-        bot = GrundenChat()
+        bot = build_chat()
     except ConfigError as err:
         print(f"Konfigurationsfel: {err}")
         return 1

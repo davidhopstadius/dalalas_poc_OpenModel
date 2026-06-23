@@ -45,4 +45,14 @@ def public_settings(cfg: Config) -> dict:
         "request_timeout": cfg.request_timeout,
         "has_api_key": bool(cfg.api_key),
         "has_brave_key": bool(cfg.brave_api_key),
+        # Multi-leverantor
+        "provider": cfg.provider,
+        "active_model": cfg.active_llm().model,
+        "berget_base_url": cfg.berget_base_url,
+        "berget_model": cfg.berget_model,
+        "berget_price_in": cfg.berget_price_in,
+        "berget_price_out": cfg.berget_price_out,
+        "anthropic_model": cfg.anthropic_model,
+        "has_berget_key": bool(cfg.berget_api_key),
+        "has_anthropic_key": bool(cfg.anthropic_api_key),
     }

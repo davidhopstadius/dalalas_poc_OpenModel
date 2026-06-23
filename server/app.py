@@ -6,6 +6,7 @@ import os
 import queue
 import re
 import threading
+import time
 
 # Forankra processen i projektroten sa de relativa sokvagarna (rag_index/,
 # documents/, .env, data/) fungerar oavsett varifran servern startas.
@@ -20,7 +21,7 @@ from pydantic import BaseModel
 
 import ingest
 import rag
-from chat import GrundenChat
+from chat import build_chat
 from openai import OpenAIError
 from server import pricing, runtime, settings_store, store
 
@@ -36,6 +37,37 @@ app.add_middleware(
 CITATION_RE = re.compile(r"\[Kalla: (.+?), sida (\d+)\]")
 
 store.init_db()
+
+
+def _warm_up_local_models() -> None:
+    """Pre-ladda de lokala RAG-modellerna (e5 + reranker) i en bakgrundstrad.
+
+    Forsta doc_search efter processtart laddar annars modellerna lat (~3 GB ->
+    RAM/nedladdning), vilket ger en flerminuters-spik pa den forsta fragan. Genom
+    att varma upp vid start ar de redan i RAM nar anvandaren staller sin fraga.
+    """
+    import sys
+
+    import rag
+
+    try:
+        cfg = runtime.effective_config()
+    except Exception:  # noqa: BLE001
+        return
+    if cfg.embed_backend == "local":
+        try:
+            rag.embed_texts(["uppvarmning"], cfg, is_query=True)
+        except Exception as err:  # noqa: BLE001 - warm-up far aldrig falla servern
+            print(f"[warmup] embeddings: {err}", file=sys.stderr)
+    if cfg.rerank and cfg.rerank_backend == "local":
+        try:
+            rag._local_rerank("uppvarmning", ["uppvarmning"], cfg)
+        except Exception as err:  # noqa: BLE001
+            print(f"[warmup] reranker: {err}", file=sys.stderr)
+    print("[warmup] lokala RAG-modeller klara", file=sys.stderr)
+
+
+threading.Thread(target=_warm_up_local_models, daemon=True).start()
 
 
 def _sse(payload: dict) -> str:
@@ -73,13 +105,9 @@ def chat(req: ChatRequest):
         conv_id = store.create_conversation(title=message)
 
     prior = store.get_messages(conv_id)
-    bot = GrundenChat(cfg)
-    # Seeda historiken med tidigare turer (system-prompten ligger redan forst).
-    bot.history = bot.history[:1] + [
-        {"role": m["role"], "content": m["content"]}
-        for m in prior
-        if m["role"] in ("user", "assistant") and m["content"]
-    ]
+    bot = build_chat(cfg)
+    # Seeda historiken med tidigare turer (leverantorsspecifikt - se chat.py).
+    bot.seed_history(prior)
     store.add_message(conv_id, "user", message)
 
     def event_stream():
@@ -101,13 +129,15 @@ def chat(req: ChatRequest):
 
         def worker():
             try:
+                t0 = time.perf_counter()
                 answer = bot.ask(
                     message,
                     on_tool=on_tool,
                     on_token=on_token,
                     on_tool_result=on_tool_result,
                 )
-                q.put(("final", answer))
+                latency_ms = int((time.perf_counter() - t0) * 1000)
+                q.put(("final", answer, latency_ms))
             except OpenAIError as err:
                 q.put(("error", str(err)))
             except Exception as err:  # noqa: BLE001 - vill aldrig hanga strommen
@@ -128,9 +158,11 @@ def chat(req: ChatRequest):
                 store.record_usage(
                     conv_id,
                     msg_id,
-                    cfg.model,
+                    bot.model,
                     bot.usage["prompt_tokens"],
                     bot.usage["completion_tokens"],
+                    provider=cfg.provider,
+                    latency_ms=item[2],
                 )
                 yield _sse(
                     {
@@ -256,17 +288,28 @@ def delete_document(doc_name: str):
 def get_usage():
     cfg = runtime.effective_config()
     summary = store.usage_summary()
-    r = pricing.rates(cfg.model)
+
+    # Summera kostnaden per valuta (Grunden/Berget i SEK, Anthropic i USD) sa vi
+    # aldrig blandar ihop valutor i en och samma siffra.
     for key in ("last_message", "last_conversation", "today", "total"):
         block = summary[key]
-        block["cost"] = round(
-            pricing.cost(cfg.model, block["prompt_tokens"], block["completion_tokens"]), 4
-        )
-    summary["model"] = cfg.model
-    summary["currency"] = pricing.CURRENCY
+        costs: dict[str, float] = {}
+        for grp in block.get("by_model", []):
+            amount, currency = pricing.cost(
+                grp["provider"], grp["model"],
+                grp["prompt_tokens"], grp["completion_tokens"], cfg,
+            )
+            costs[currency] = round(costs.get(currency, 0.0) + amount, 4)
+        block["costs"] = costs
+
+    active = cfg.active_llm()
+    r = pricing.rates(cfg.provider, active.model, cfg)
+    summary["provider"] = cfg.provider
+    summary["model"] = active.model
     summary["rates"] = {
         "input_per_mtok": r["input"],
         "output_per_mtok": r["output"],
+        "currency": r["currency"],
     }
     return summary
 
@@ -289,6 +332,15 @@ class SettingsUpdate(BaseModel):
     embed_model: str | None = None
     rag_top_k: int | None = None
     request_timeout: float | None = None
+    # Multi-leverantor
+    provider: str | None = None
+    berget_base_url: str | None = None
+    berget_model: str | None = None
+    berget_api_key: str | None = None
+    berget_price_in: float | None = None
+    berget_price_out: float | None = None
+    anthropic_model: str | None = None
+    anthropic_api_key: str | None = None
 
 
 @app.get("/api/settings")

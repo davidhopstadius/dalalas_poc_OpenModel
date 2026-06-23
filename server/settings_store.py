@@ -28,10 +28,19 @@ ALLOWED_FIELDS = {
     "embed_model",
     "rag_top_k",
     "request_timeout",
+    # Multi-leverantor
+    "provider",
+    "berget_base_url",
+    "berget_model",
+    "berget_api_key",
+    "berget_price_in",
+    "berget_price_out",
+    "anthropic_model",
+    "anthropic_api_key",
 }
 
 # Falt som ar hemliga - returneras aldrig i klartext till klienten.
-SECRET_FIELDS = {"api_key", "brave_api_key"}
+SECRET_FIELDS = {"api_key", "brave_api_key", "berget_api_key", "anthropic_api_key"}
 
 _lock = Lock()
 

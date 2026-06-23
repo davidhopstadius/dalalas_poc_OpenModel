@@ -1,4 +1,5 @@
 openai>=1.78,<2
+anthropic>=0.40  # Anthropic-leverantoren (Claude, Messages-API)
 python-dotenv>=1.0
 pymupdf>=1.24
 numpy>=1.26

@@ -50,12 +50,20 @@ def init_db() -> None:
                 model             TEXT NOT NULL,
                 prompt_tokens     INTEGER NOT NULL,
                 completion_tokens INTEGER NOT NULL,
-                created_at        REAL NOT NULL
+                created_at        REAL NOT NULL,
+                provider          TEXT,
+                latency_ms        INTEGER
             );
             CREATE INDEX IF NOT EXISTS idx_usage_created ON usage(created_at);
             CREATE INDEX IF NOT EXISTS idx_usage_conv ON usage(conversation_id);
             """
         )
+        # Migrering for aldre databaser: lagg till kolumner som saknas.
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(usage)")}
+        if "provider" not in existing:
+            conn.execute("ALTER TABLE usage ADD COLUMN provider TEXT")
+        if "latency_ms" not in existing:
+            conn.execute("ALTER TABLE usage ADD COLUMN latency_ms INTEGER")
 
 
 def list_conversations() -> list[dict]:
@@ -137,14 +145,17 @@ def record_usage(
     model: str,
     prompt_tokens: int,
     completion_tokens: int,
+    provider: str | None = None,
+    latency_ms: int | None = None,
 ) -> None:
-    """Spara token-forbrukningen for en avslutad fraga."""
+    """Spara token-forbrukningen (och svarstid) for en avslutad fraga."""
     if not (prompt_tokens or completion_tokens):
         return  # inget att spara (t.ex. om API:t inte returnerade usage)
     with _connect() as conn:
         conn.execute(
             "INSERT INTO usage (id, conversation_id, message_id, model, "
-            "prompt_tokens, completion_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "prompt_tokens, completion_tokens, created_at, provider, latency_ms) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 uuid.uuid4().hex,
                 conversation_id,
@@ -153,6 +164,8 @@ def record_usage(
                 int(prompt_tokens),
                 int(completion_tokens),
                 time.time(),
+                provider,
+                int(latency_ms) if latency_ms is not None else None,
             ),
         )
 
@@ -166,10 +179,12 @@ def usage_summary() -> dict:
     )
     with _connect() as conn:
         last = conn.execute(
-            "SELECT conversation_id, message_id FROM usage ORDER BY created_at DESC LIMIT 1"
+            "SELECT conversation_id, message_id, latency_ms FROM usage "
+            "ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         last_conv_id = last["conversation_id"] if last else None
         last_msg_id = last["message_id"] if last else None
+        last_latency_ms = last["latency_ms"] if last else None
 
         def agg(where: str, params: tuple) -> dict:
             row = conn.execute(
@@ -178,11 +193,28 @@ def usage_summary() -> dict:
                 f"FROM usage {where}",
                 params,
             ).fetchone()
+            # Gruppera per (provider, model) sa kostnaden kan rakna i ratt valuta.
+            groups = conn.execute(
+                "SELECT COALESCE(provider, 'grunden') AS provider, model, "
+                "COALESCE(SUM(prompt_tokens), 0) AS p, "
+                "COALESCE(SUM(completion_tokens), 0) AS c "
+                f"FROM usage {where} GROUP BY provider, model",
+                params,
+            ).fetchall()
             return {
                 "prompt_tokens": row["p"],
                 "completion_tokens": row["c"],
                 "total_tokens": row["p"] + row["c"],
                 "requests": row["n"],
+                "by_model": [
+                    {
+                        "provider": g["provider"],
+                        "model": g["model"],
+                        "prompt_tokens": g["p"],
+                        "completion_tokens": g["c"],
+                    }
+                    for g in groups
+                ],
             }
 
         last_message = (
@@ -209,4 +241,5 @@ def usage_summary() -> dict:
         "last_conversation": last_conversation,
         "today": today,
         "total": total,
+        "last_latency_ms": last_latency_ms,
     }

@@ -87,13 +87,39 @@ def web_search(query: str, api_key: str, count: int = 5) -> str:
 
 
 def schemas(config) -> list[dict] | None:
-    """Returnera tools-schemat (verktygen som ar aktiverade), eller None."""
+    """Returnera tools-schemat (verktygen som ar aktiverade), eller None.
+
+    OpenAI-format (Grunden/Berget).
+    """
     tools: list[dict] = []
     if config.search_enabled:
         tools.append(WEB_SEARCH_SCHEMA)
     if config.doc_search and rag.has_index(config):
         tools.append(DOC_SEARCH_SCHEMA)
     return tools or None
+
+
+def anthropic_schemas(config) -> list[dict] | None:
+    """Samma aktiverade verktyg, men i Anthropics format.
+
+    Anthropic vill ha {name, description, input_schema} pa toppnivan i stallet
+    for OpenAI:s {type:"function", function:{name, description, parameters}}.
+    Vi skalar av function-wrappern fran samma schema-definitioner.
+    """
+    openai_tools = schemas(config)
+    if not openai_tools:
+        return None
+    out = []
+    for t in openai_tools:
+        fn = t["function"]
+        out.append(
+            {
+                "name": fn["name"],
+                "description": fn["description"],
+                "input_schema": fn["parameters"],
+            }
+        )
+    return out
 
 
 def run_tool(name: str, arguments: str, config) -> str:
