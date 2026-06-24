@@ -138,6 +138,9 @@ def chat(req: ChatRequest):
                     if cite not in citations:
                         citations.append(cite)
 
+        def on_retry() -> None:
+            q.put(("retry",))
+
         def worker():
             try:
                 t0 = time.perf_counter()
@@ -146,6 +149,7 @@ def chat(req: ChatRequest):
                     on_tool=on_tool,
                     on_token=on_token,
                     on_tool_result=on_tool_result,
+                    on_retry=on_retry,
                 )
                 latency_ms = int((time.perf_counter() - t0) * 1000)
                 q.put(("final", answer, latency_ms))
@@ -162,6 +166,8 @@ def chat(req: ChatRequest):
             kind = item[0]
             if kind == "token":
                 yield _sse({"type": "token", "text": item[1]})
+            elif kind == "retry":
+                yield _sse({"type": "retry"})
             elif kind == "tool":
                 yield _sse({"type": "tool", "name": item[1], "query": item[2]})
             elif kind == "final":

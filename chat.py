@@ -144,14 +144,16 @@ class GrundenChat:
         ]
         return "".join(parts), tool_calls, usage
 
-    def ask(self, prompt: str, on_tool=None, on_token=None, on_tool_result=None) -> str:
+    def ask(self, prompt: str, on_tool=None, on_token=None, on_tool_result=None, on_retry=None) -> str:
         """Skicka ett meddelande, kor ev. verktyg, och returnera svaret.
 
         Svaret streamas: on_token(text) anropas for varje bit medan den kommer.
         on_tool(name, arguments) anropas nar modellen begar ett verktyg och
         on_tool_result(name, result) nar verktyget kort (t.ex. for att plocka ut
-        kallcitat). Alla callbacks ar valfria - utan dem fungerar metoden som
-        vanligt och returnerar hela svaret som strang (vid biblioteksanvandning).
+        kallcitat). on_retry() anropas nar ett tomt svar upptackts och ett
+        omforsok startar (sa GUI:t kan visa "Forsoker igen..."). Alla callbacks
+        ar valfria - utan dem fungerar metoden som vanligt och returnerar hela
+        svaret som strang (vid biblioteksanvandning).
         """
         self.history.append({"role": "user", "content": prompt})
         self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -168,6 +170,8 @@ class GrundenChat:
             # bygger turen - historiken slutar fortfarande pa user/tool, sa
             # omforsoket ar rent.
             if not tool_calls and not content.strip():
+                if on_retry:
+                    on_retry()
                 content, tool_calls, usage = self._consume_stream(self._create(), on_token)
                 if usage:
                     for key in self.usage:
@@ -278,7 +282,9 @@ class AnthropicChat:
             self.usage["prompt_tokens"] + self.usage["completion_tokens"]
         )
 
-    def ask(self, prompt: str, on_tool=None, on_token=None, on_tool_result=None) -> str:
+    def ask(self, prompt: str, on_tool=None, on_token=None, on_tool_result=None, on_retry=None) -> str:
+        # on_retry ingar for samma granssnitt som GrundenChat men anvands inte har
+        # (Anthropic-vagen har inget tomt-svar-omforsok).
         self.history.append({"role": "user", "content": prompt})
         self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 

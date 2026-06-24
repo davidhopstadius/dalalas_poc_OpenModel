@@ -82,6 +82,7 @@ export interface ChatHandlers {
   onStart?: (conversationId: string) => void
   onToken?: (text: string) => void
   onTool?: (name: string, query: string) => void
+  onRetry?: () => void
   onDone?: (payload: { conversation_id: string; message_id: string; citations: Citation[] }) => void
   onError?: (message: string) => void
 }
@@ -135,6 +136,9 @@ export async function streamChat(
           break
         case 'tool':
           handlers.onTool?.(evt.name, evt.query)
+          break
+        case 'retry':
+          handlers.onRetry?.()
           break
         case 'done':
           handlers.onDone?.(evt)

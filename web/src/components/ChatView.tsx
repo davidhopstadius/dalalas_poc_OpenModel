@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { BookText, KeyRound, Search, Sparkles } from 'lucide-react'
+import { BookText, KeyRound, RotateCw, Search, Sparkles } from 'lucide-react'
 import { api, streamChat } from '../api'
 import type { Citation, Message as Msg, Settings } from '../types'
 import Message from './Message'
@@ -33,6 +33,7 @@ export default function ChatView({
   const [streaming, setStreaming] = useState(false)
   const [streamContent, setStreamContent] = useState('')
   const [tool, setTool] = useState<{ name: string; query: string } | null>(null)
+  const [retrying, setRetrying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -62,6 +63,7 @@ export default function ChatView({
     setStreaming(true)
     setStreamContent('')
     setTool(null)
+    setRetrying(false)
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -82,10 +84,15 @@ export default function ChatView({
             }
           },
           onTool: (name, query) => setTool({ name, query }),
+          onRetry: () => {
+            setRetrying(true)
+            setTool(null)
+          },
           onToken: (t) => {
             acc += t
             setStreamContent(acc)
             setTool(null)
+            setRetrying(false)
           },
           onDone: (payload) => {
             citations = payload.citations
@@ -119,6 +126,7 @@ export default function ChatView({
     setStreamContent('')
     setStreaming(false)
     setTool(null)
+    setRetrying(false)
     abortRef.current = null
     // Streamen ar klar och svaret ar sparat i servern. Slapp guarden sa att
     // samtalet laddas om normalt nasta gang man klickar in pa det igen (annars
@@ -159,6 +167,11 @@ export default function ChatView({
                               <span className="text-ink-faint"> · "{tool.query}"</span>
                             ) : null}
                           </span>
+                        </>
+                      ) : retrying ? (
+                        <>
+                          <RotateCw size={15} className="animate-spin text-accent" />
+                          <span>Tomt svar — försöker igen…</span>
                         </>
                       ) : (
                         <>
