@@ -8,3 +8,5 @@ fastembed>=0.8  # lokal embeddings-backend (ONNX/CPU)
 fastapi>=0.115
 uvicorn[standard]>=0.30
 python-multipart>=0.0.9
+bcrypt>=4.1          # losenordshashning for inloggning
+itsdangerous>=2.1    # signerade session-cookies (Starlette SessionMiddleware)

@@ -1,19 +1,29 @@
 import { useCallback, useEffect, useState } from 'react'
 import { KeyRound, Menu } from 'lucide-react'
-import { api } from './api'
-import type { ConversationSummary, Settings, View } from './types'
+import { api, setUnauthorizedHandler } from './api'
+import type { ConversationSummary, Settings, User, View } from './types'
 import Sidebar from './components/Sidebar'
 import ChatView from './components/ChatView'
 import DocumentsView from './components/DocumentsView'
 import DriftInfoView from './components/DriftInfoView'
 import SettingsView from './components/SettingsView'
+import UsersView from './components/UsersView'
+import Login from './components/Login'
+
+// Vyer som bara admins kommer åt. Icke-admins som råkar hamna här (t.ex. via
+// gammal state) skickas tillbaka till chatten.
+const ADMIN_VIEWS: View[] = ['documents', 'driftinfo', 'settings', 'users']
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null)
+  const [authChecked, setAuthChecked] = useState(false)
   const [view, setView] = useState<View>('chat')
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  const isAdmin = !!user?.is_admin
 
   const refreshConversations = useCallback(async () => {
     try {
@@ -27,14 +37,36 @@ export default function App() {
     try {
       setSettings(await api.getSettings())
     } catch {
-      /* ignorera */
+      /* icke-admin (403) eller backend nere - lat settings vara null */
     }
   }, [])
 
+  // Kolla befintlig session vid start; nolla user vid 401 (utgangen session).
   useEffect(() => {
+    setUnauthorizedHandler(() => setUser(null))
+    api
+      .me()
+      .then(setUser)
+      .catch(() => setUser(null))
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  // Ladda data nar vi vet vem som ar inloggad.
+  useEffect(() => {
+    if (!user) {
+      setConversations([])
+      setSettings(null)
+      setActiveId(null)
+      return
+    }
     refreshConversations()
-    refreshSettings()
-  }, [refreshConversations, refreshSettings])
+    if (user.is_admin) refreshSettings()
+  }, [user, refreshConversations, refreshSettings])
+
+  // Skydda admin-vyer i frontend (backend gatar redan, detta ar bara UX).
+  useEffect(() => {
+    if (!isAdmin && ADMIN_VIEWS.includes(view)) setView('chat')
+  }, [isAdmin, view])
 
   const openConversation = (id: string) => {
     setActiveId(id)
@@ -53,10 +85,29 @@ export default function App() {
     setSidebarOpen(false)
   }
 
+  const logout = async () => {
+    try {
+      await api.logout()
+    } catch {
+      /* ignorera */
+    }
+    setUser(null)
+    setView('chat')
+  }
+
+  if (!authChecked) {
+    return <div className="grid h-full place-items-center text-[14px] text-ink-faint">Laddar…</div>
+  }
+
+  if (!user) {
+    return <Login onLoggedIn={setUser} />
+  }
+
   return (
     <div className="flex h-full overflow-hidden">
       <Sidebar
         view={view}
+        user={user}
         conversations={conversations}
         activeId={activeId}
         open={sidebarOpen}
@@ -66,6 +117,7 @@ export default function App() {
         onGoTo={goTo}
         onConversationsChanged={refreshConversations}
         onActiveCleared={() => setActiveId(null)}
+        onLogout={logout}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -95,14 +147,15 @@ export default function App() {
               refreshConversations()
             }}
             onTitleMaybeChanged={refreshConversations}
-            onOpenSettings={() => setView('settings')}
+            onOpenSettings={() => isAdmin && setView('settings')}
           />
         )}
-        {view === 'documents' && <DocumentsView />}
-        {view === 'driftinfo' && <DriftInfoView />}
-        {view === 'settings' && (
+        {view === 'documents' && isAdmin && <DocumentsView />}
+        {view === 'driftinfo' && isAdmin && <DriftInfoView />}
+        {view === 'settings' && isAdmin && (
           <SettingsView settings={settings} onSaved={refreshSettings} />
         )}
+        {view === 'users' && isAdmin && <UsersView currentUser={user} />}
       </main>
     </div>
   )

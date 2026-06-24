@@ -28,13 +28,21 @@ def init_db() -> None:
     with _connect() as conn:
         conn.executescript(
             """
+            CREATE TABLE IF NOT EXISTS users (
+                id            TEXT PRIMARY KEY,
+                email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                password_hash TEXT NOT NULL,
+                is_admin      INTEGER NOT NULL DEFAULT 0,
+                created_at    REAL NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS conversations (
                 id          TEXT PRIMARY KEY,
                 title       TEXT NOT NULL,
                 created_at  REAL NOT NULL,
                 updated_at  REAL NOT NULL,
                 model       TEXT,
-                provider    TEXT
+                provider    TEXT,
+                user_id     TEXT REFERENCES users(id) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS messages (
                 id              TEXT PRIMARY KEY,
@@ -71,6 +79,11 @@ def init_db() -> None:
             conn.execute("ALTER TABLE conversations ADD COLUMN model TEXT")
         if "provider" not in conv_cols:
             conn.execute("ALTER TABLE conversations ADD COLUMN provider TEXT")
+        if "user_id" not in conv_cols:
+            # Aldre DB: samtalen saknar agare. Kolumnen laggs till har; befintliga
+            # samtal knyts till bootstrap-adminen i ensure_bootstrap_admin().
+            conn.execute("ALTER TABLE conversations ADD COLUMN user_id TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(user_id, updated_at)")
         # Backfill: samtal skapade innan kolumnerna fanns saknar model/provider.
         # Harled dem fran den FORSTA usage-raden for samtalet (den som startade
         # det), sa aven gamla trader far en tooltip. Idempotent (rakar bara NULL).
@@ -93,35 +106,41 @@ def init_db() -> None:
         )
 
 
-def list_conversations() -> list[dict]:
+def list_conversations(user_id: str) -> list[dict]:
+    """Lista en anvandares egna samtal (nyast forst)."""
     with _connect() as conn:
         rows = conn.execute(
             "SELECT id, title, updated_at, model, provider FROM conversations "
-            "ORDER BY updated_at DESC"
+            "WHERE user_id = ? ORDER BY updated_at DESC",
+            (user_id,),
         ).fetchall()
     return [dict(r) for r in rows]
 
 
 def create_conversation(
-    title: str, model: str | None = None, provider: str | None = None
+    title: str, user_id: str, model: str | None = None, provider: str | None = None
 ) -> str:
-    """Skapa ett samtal. model/provider lagras for den leverantor som STARTADE
-    samtalet, sa sidopanelen kan visa det i tooltip aven om man byter sen."""
+    """Skapa ett samtal agt av user_id. model/provider lagras for den leverantor
+    som STARTADE samtalet, sa sidopanelen kan visa det i tooltip aven om man
+    byter sen."""
     conv_id = uuid.uuid4().hex
     now = time.time()
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO conversations (id, title, created_at, updated_at, model, provider) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (conv_id, title.strip()[:80] or "Nytt samtal", now, now, model, provider),
+            "INSERT INTO conversations (id, title, created_at, updated_at, model, provider, user_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (conv_id, title.strip()[:80] or "Nytt samtal", now, now, model, provider, user_id),
         )
     return conv_id
 
 
-def conversation_exists(conv_id: str) -> bool:
+def conversation_owned_by(conv_id: str, user_id: str) -> bool:
+    """True om samtalet finns OCH agas av user_id. Gar att anvanda bade for
+    atkomstkontroll och for att avgora om ett samtals-id ska ateranvandas."""
     with _connect() as conn:
         row = conn.execute(
-            "SELECT 1 FROM conversations WHERE id = ?", (conv_id,)
+            "SELECT 1 FROM conversations WHERE id = ? AND user_id = ?",
+            (conv_id, user_id),
         ).fetchone()
     return row is not None
 
@@ -167,6 +186,87 @@ def add_message(conv_id: str, role: str, content: str, citations: list | None = 
             "UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id)
         )
     return msg_id
+
+
+# --------------------------------------------------------------------------- #
+#  Anvandare (inloggning)
+# --------------------------------------------------------------------------- #
+def count_users() -> int:
+    with _connect() as conn:
+        return conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+
+
+def create_user(email: str, password_hash: str, is_admin: bool) -> str:
+    """Skapa en anvandare. Kastar sqlite3.IntegrityError om e-posten redan finns."""
+    user_id = uuid.uuid4().hex
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO users (id, email, password_hash, is_admin, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, email.strip(), password_hash, 1 if is_admin else 0, time.time()),
+        )
+    return user_id
+
+
+def get_user_by_email(email: str) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE email = ?", (email.strip(),)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_user(user_id: str) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_users() -> list[dict]:
+    """Alla anvandare (utan losenordshash) for admin-vyn."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, email, is_admin, created_at FROM users ORDER BY created_at"
+        ).fetchall()
+    return [{**dict(r), "is_admin": bool(r["is_admin"])} for r in rows]
+
+
+def set_admin(user_id: str, is_admin: bool) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE users SET is_admin = ? WHERE id = ?", (1 if is_admin else 0, user_id)
+        )
+
+
+def set_password(user_id: str, password_hash: str) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id)
+        )
+
+
+def delete_user(user_id: str) -> None:
+    """Ta bort en anvandare. Samtalen foljer med (ON DELETE CASCADE)."""
+    with _connect() as conn:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
+def admin_count() -> int:
+    """Antal admins - sa vi aldrig tar bort/degraderar den sista adminen."""
+    with _connect() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) AS n FROM users WHERE is_admin = 1"
+        ).fetchone()["n"]
+
+
+def assign_orphan_conversations(user_id: str) -> int:
+    """Knyt alla agarlosa samtal (user_id IS NULL) till user_id. Korrigerar
+    befintliga samtal fran tiden innan inloggning fanns. Returnerar antal."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE conversations SET user_id = ? WHERE user_id IS NULL", (user_id,)
+        )
+        return cur.rowcount
 
 
 # --------------------------------------------------------------------------- #

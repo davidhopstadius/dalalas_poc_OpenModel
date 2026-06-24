@@ -13,19 +13,33 @@ import time
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(_PROJECT_ROOT)
 
-from fastapi import FastAPI, HTTPException, UploadFile
+import sqlite3
+
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.middleware.sessions import SessionMiddleware
 
 import ingest
 import rag
 from chat import build_chat
 from openai import OpenAIError
-from server import pricing, runtime, settings_store, store
+from server import auth, pricing, runtime, settings_store, store
+from server.auth import current_user, require_admin
 
 app = FastAPI(title="PocGrunden GUI")
+
+# Signerad session-cookie (inloggning). Maste ligga fore ovriga middleware som
+# laser request.session.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=auth.SECRET_KEY,
+    https_only=auth.COOKIE_SECURE,
+    max_age=auth.SESSION_MAX_AGE,
+    same_site="lax",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,6 +51,7 @@ app.add_middleware(
 CITATION_RE = re.compile(r"\[Kalla: (.+?), sida (\d+)\]")
 
 store.init_db()
+auth.ensure_bootstrap_admin()
 
 
 def _warm_up_local_models() -> None:
@@ -82,6 +97,102 @@ def _query_of(arguments: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+#  Inloggning
+# --------------------------------------------------------------------------- #
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _public_user(user: dict) -> dict:
+    return {"id": user["id"], "email": user["email"], "is_admin": bool(user["is_admin"])}
+
+
+@app.post("/api/login")
+def login(req: LoginRequest, request: Request):
+    user = store.get_user_by_email(req.email.strip())
+    if not user or not auth.verify_password(req.password, user["password_hash"]):
+        raise HTTPException(401, "Fel e-post eller losenord.")
+    request.session["user_id"] = user["id"]
+    return _public_user(user)
+
+
+@app.post("/api/logout")
+def logout(request: Request):
+    request.session.clear()
+    return {"ok": True}
+
+
+@app.get("/api/me")
+def me(user: dict = Depends(current_user)):
+    return _public_user(user)
+
+
+# --------------------------------------------------------------------------- #
+#  Anvandarhantering (endast admin)
+# --------------------------------------------------------------------------- #
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    is_admin: bool = False
+
+
+class UpdateUserRequest(BaseModel):
+    password: str | None = None
+    is_admin: bool | None = None
+
+
+@app.get("/api/users")
+def list_users(_admin: dict = Depends(require_admin)):
+    return store.list_users()
+
+
+@app.post("/api/users")
+def create_user(req: CreateUserRequest, _admin: dict = Depends(require_admin)):
+    email = req.email.strip()
+    if not email or "@" not in email:
+        raise HTTPException(400, "Ange en giltig e-postadress.")
+    if len(req.password) < 6:
+        raise HTTPException(400, "Losenordet maste vara minst 6 tecken.")
+    try:
+        user_id = store.create_user(email, auth.hash_password(req.password), req.is_admin)
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "E-postadressen anvands redan.")
+    return {"id": user_id, "email": email, "is_admin": req.is_admin}
+
+
+@app.patch("/api/users/{user_id}")
+def update_user(user_id: str, req: UpdateUserRequest, _admin: dict = Depends(require_admin)):
+    target = store.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "Anvandaren finns inte.")
+    if req.is_admin is not None:
+        # Skydda mot att degradera den sista adminen (da kan ingen langre logga
+        # in och se installningar).
+        if target["is_admin"] and not req.is_admin and store.admin_count() <= 1:
+            raise HTTPException(400, "Kan inte ta bort sista adminen.")
+        store.set_admin(user_id, req.is_admin)
+    if req.password is not None:
+        if len(req.password) < 6:
+            raise HTTPException(400, "Losenordet maste vara minst 6 tecken.")
+        store.set_password(user_id, auth.hash_password(req.password))
+    return {"ok": True}
+
+
+@app.delete("/api/users/{user_id}")
+def delete_user(user_id: str, admin: dict = Depends(require_admin)):
+    target = store.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "Anvandaren finns inte.")
+    if user_id == admin["id"]:
+        raise HTTPException(400, "Du kan inte ta bort ditt eget konto.")
+    if target["is_admin"] and store.admin_count() <= 1:
+        raise HTTPException(400, "Kan inte ta bort sista adminen.")
+    store.delete_user(user_id)
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
 #  Chatt (SSE-streaming)
 # --------------------------------------------------------------------------- #
 class ChatRequest(BaseModel):
@@ -90,7 +201,7 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/api/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, user: dict = Depends(current_user)):
     cfg = runtime.effective_config()
     # Validera den AKTIVA leverantorens nyckel (inte alltid Grundens), sa ett
     # saknat Berget-/Anthropic-varde ger ett tydligt fel i stallet for ett raare
@@ -106,13 +217,13 @@ def chat(req: ChatRequest):
     if not message:
         raise HTTPException(400, "Tomt meddelande.")
 
-    if req.conversation_id and store.conversation_exists(req.conversation_id):
+    if req.conversation_id and store.conversation_owned_by(req.conversation_id, user["id"]):
         conv_id = req.conversation_id
     else:
         # Lagra vilken leverantor/modell som STARTADE samtalet (visas i sidopanelens
         # tooltip aven om man byter leverantor senare).
         conv_id = store.create_conversation(
-            title=message, model=cfg.active_llm().model, provider=cfg.provider
+            title=message, user_id=user["id"], model=cfg.active_llm().model, provider=cfg.provider
         )
 
     prior = store.get_messages(conv_id)
@@ -205,28 +316,30 @@ class RenameRequest(BaseModel):
 
 
 @app.get("/api/conversations")
-def list_conversations():
-    return store.list_conversations()
+def list_conversations(user: dict = Depends(current_user)):
+    return store.list_conversations(user["id"])
 
 
 @app.get("/api/conversations/{conv_id}")
-def get_conversation(conv_id: str):
-    if not store.conversation_exists(conv_id):
+def get_conversation(conv_id: str, user: dict = Depends(current_user)):
+    if not store.conversation_owned_by(conv_id, user["id"]):
         raise HTTPException(404, "Samtalet finns inte.")
     return {"id": conv_id, "messages": store.get_messages(conv_id)}
 
 
 @app.patch("/api/conversations/{conv_id}")
-def rename_conversation(conv_id: str, req: RenameRequest):
-    if not store.conversation_exists(conv_id):
+def rename_conversation(conv_id: str, req: RenameRequest, user: dict = Depends(current_user)):
+    if not store.conversation_owned_by(conv_id, user["id"]):
         raise HTTPException(404, "Samtalet finns inte.")
     store.rename_conversation(conv_id, req.title)
     return {"ok": True}
 
 
 @app.delete("/api/conversations/{conv_id}")
-def delete_conversation(conv_id: str):
-    store.delete_conversation(conv_id)
+def delete_conversation(conv_id: str, user: dict = Depends(current_user)):
+    # Tyst no-op om samtalet inte ar ditt - ingen far radera annans samtal.
+    if store.conversation_owned_by(conv_id, user["id"]):
+        store.delete_conversation(conv_id)
     return {"ok": True}
 
 
@@ -250,13 +363,13 @@ def _doc_summaries(cfg) -> list[dict]:
 
 
 @app.get("/api/documents")
-def list_documents():
+def list_documents(_admin: dict = Depends(require_admin)):
     cfg = runtime.effective_config()
     return {"documents": _doc_summaries(cfg), "doc_search": cfg.doc_search}
 
 
 @app.post("/api/documents")
-async def upload_document(file: UploadFile):
+async def upload_document(file: UploadFile, _admin: dict = Depends(require_admin)):
     cfg = runtime.effective_config()
     if not cfg.api_key:
         raise HTTPException(400, "Ingen API-nyckel konfigurerad - kan inte embedda.")
@@ -281,7 +394,7 @@ async def upload_document(file: UploadFile):
 
 
 @app.delete("/api/documents/{doc_name}")
-def delete_document(doc_name: str):
+def delete_document(doc_name: str, _admin: dict = Depends(require_admin)):
     cfg = runtime.effective_config()
     base = os.path.join(cfg.index_dir, rag._safe_name(doc_name))
     removed = False
@@ -302,7 +415,7 @@ def delete_document(doc_name: str):
 #  Driftinfo (token-anvandning och kostnad)
 # --------------------------------------------------------------------------- #
 @app.get("/api/usage")
-def get_usage():
+def get_usage(_admin: dict = Depends(require_admin)):
     cfg = runtime.effective_config()
     # Visa enbart statistik for den aktiva leverantoren.
     summary = store.usage_summary(cfg.provider)
@@ -333,7 +446,7 @@ def get_usage():
 
 
 @app.delete("/api/usage")
-def reset_usage():
+def reset_usage(_admin: dict = Depends(require_admin)):
     """Nollstall all token-/kostnadsstatistik (alla leverantorer). Samtalen lamnas."""
     store.reset_usage()
     return {"ok": True}
@@ -369,12 +482,12 @@ class SettingsUpdate(BaseModel):
 
 
 @app.get("/api/settings")
-def get_settings():
+def get_settings(_admin: dict = Depends(require_admin)):
     return runtime.public_settings(runtime.effective_config())
 
 
 @app.put("/api/settings")
-def update_settings(req: SettingsUpdate):
+def update_settings(req: SettingsUpdate, _admin: dict = Depends(require_admin)):
     settings_store.save_overrides(req.model_dump(exclude_unset=True))
     return runtime.public_settings(runtime.effective_config())
 

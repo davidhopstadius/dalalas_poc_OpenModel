@@ -5,10 +5,20 @@ import type {
   Message,
   Settings,
   UsageSummary,
+  User,
+  UserSummary,
 } from './types'
+
+// Anropas nar ett API-svar ar 401 (utloggad/utgangen session). App:en
+// registrerar en handler som tar tillbaka anvandaren till inloggningsvyn.
+let onUnauthorized: (() => void) | null = null
+export function setUnauthorizedHandler(fn: () => void) {
+  onUnauthorized = fn
+}
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
+    if (res.status === 401) onUnauthorized?.()
     let detail = res.statusText
     try {
       detail = (await res.json()).detail ?? detail
@@ -21,6 +31,38 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
 }
 
 export const api = {
+  // ---- Inloggning -------------------------------------------------------- //
+  login: (email: string, password: string) =>
+    fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    }).then((r) => jsonOrThrow<User>(r)),
+
+  logout: () => fetch('/api/logout', { method: 'POST' }).then((r) => jsonOrThrow(r)),
+
+  me: () => fetch('/api/me').then((r) => jsonOrThrow<User>(r)),
+
+  // ---- Anvandarhantering (admin) ----------------------------------------- //
+  listUsers: () => fetch('/api/users').then((r) => jsonOrThrow<UserSummary[]>(r)),
+
+  createUser: (email: string, password: string, is_admin: boolean) =>
+    fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, is_admin }),
+    }).then((r) => jsonOrThrow<User>(r)),
+
+  updateUser: (id: string, patch: { password?: string; is_admin?: boolean }) =>
+    fetch(`/api/users/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }).then((r) => jsonOrThrow(r)),
+
+  deleteUser: (id: string) =>
+    fetch(`/api/users/${id}`, { method: 'DELETE' }).then((r) => jsonOrThrow(r)),
+
   listConversations: () =>
     fetch('/api/conversations').then((r) => jsonOrThrow<ConversationSummary[]>(r)),
 
@@ -101,6 +143,7 @@ export async function streamChat(
   })
 
   if (!res.ok || !res.body) {
+    if (res.status === 401) onUnauthorized?.()
     let detail = res.statusText
     try {
       detail = (await res.json()).detail ?? detail

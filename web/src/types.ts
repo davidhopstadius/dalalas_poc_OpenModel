@@ -75,4 +75,14 @@ export interface UsageSummary {
   rates: { input_per_mtok: number; output_per_mtok: number; currency: string }
 }
 
-export type View = 'chat' | 'documents' | 'driftinfo' | 'settings'
+export type View = 'chat' | 'documents' | 'driftinfo' | 'settings' | 'users'
+
+export interface User {
+  id: string
+  email: string
+  is_admin: boolean
+}
+
+export interface UserSummary extends User {
+  created_at: number
+}

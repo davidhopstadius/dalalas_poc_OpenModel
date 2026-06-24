@@ -1,6 +1,16 @@
-import { Activity, FileText, KeyRound, Plus, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
+import {
+  Activity,
+  FileText,
+  KeyRound,
+  LogOut,
+  Plus,
+  Settings as SettingsIcon,
+  Trash2,
+  Users as UsersIcon,
+  X,
+} from 'lucide-react'
 import { api } from '../api'
-import type { ConversationSummary, View } from '../types'
+import type { ConversationSummary, User, View } from '../types'
 
 const PROVIDER_LABELS: Record<string, string> = {
   grunden: 'Grunden',
@@ -17,6 +27,7 @@ function modelTooltip(c: ConversationSummary): string | undefined {
 
 interface Props {
   view: View
+  user: User
   conversations: ConversationSummary[]
   activeId: string | null
   open: boolean
@@ -26,10 +37,12 @@ interface Props {
   onGoTo: (v: View) => void
   onConversationsChanged: () => void
   onActiveCleared: () => void
+  onLogout: () => void
 }
 
 export default function Sidebar({
   view,
+  user,
   conversations,
   activeId,
   open,
@@ -39,6 +52,7 @@ export default function Sidebar({
   onGoTo,
   onConversationsChanged,
   onActiveCleared,
+  onLogout,
 }: Props) {
   const remove = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
@@ -128,26 +142,52 @@ export default function Sidebar({
           </ul>
         </nav>
 
-        {/* Botten-navigering */}
-        <div className="space-y-0.5 border-t border-line px-3 py-3">
-          <NavItem
-            icon={<FileText size={17} />}
-            label="Dokument"
-            active={view === 'documents'}
-            onClick={() => onGoTo('documents')}
-          />
-          <NavItem
-            icon={<Activity size={17} />}
-            label="Driftinfo"
-            active={view === 'driftinfo'}
-            onClick={() => onGoTo('driftinfo')}
-          />
-          <NavItem
-            icon={<SettingsIcon size={17} />}
-            label="Inställningar"
-            active={view === 'settings'}
-            onClick={() => onGoTo('settings')}
-          />
+        {/* Botten-navigering - admin-verktyg syns bara for admins */}
+        {user.is_admin && (
+          <div className="space-y-0.5 border-t border-line px-3 py-3">
+            <NavItem
+              icon={<FileText size={17} />}
+              label="Dokument"
+              active={view === 'documents'}
+              onClick={() => onGoTo('documents')}
+            />
+            <NavItem
+              icon={<Activity size={17} />}
+              label="Driftinfo"
+              active={view === 'driftinfo'}
+              onClick={() => onGoTo('driftinfo')}
+            />
+            <NavItem
+              icon={<UsersIcon size={17} />}
+              label="Användare"
+              active={view === 'users'}
+              onClick={() => onGoTo('users')}
+            />
+            <NavItem
+              icon={<SettingsIcon size={17} />}
+              label="Inställningar"
+              active={view === 'settings'}
+              onClick={() => onGoTo('settings')}
+            />
+          </div>
+        )}
+
+        {/* Inloggad anvandare + utloggning */}
+        <div className="flex items-center gap-2 border-t border-line px-3 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13px] font-medium text-ink" title={user.email}>
+              {user.email}
+            </div>
+            <div className="text-[11px] text-ink-faint">{user.is_admin ? 'Admin' : 'Användare'}</div>
+          </div>
+          <button
+            onClick={onLogout}
+            className="grid h-8 w-8 place-items-center rounded-lg text-ink-soft transition hover:bg-line-soft hover:text-ink"
+            aria-label="Logga ut"
+            title="Logga ut"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </aside>
     </>
