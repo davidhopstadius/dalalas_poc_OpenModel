@@ -92,8 +92,15 @@ class ChatRequest(BaseModel):
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     cfg = runtime.effective_config()
-    if not cfg.api_key:
-        raise HTTPException(400, "Ingen API-nyckel konfigurerad. Satt den under Installningar.")
+    # Validera den AKTIVA leverantorens nyckel (inte alltid Grundens), sa ett
+    # saknat Berget-/Anthropic-varde ger ett tydligt fel i stallet for ett raare
+    # SDK-autentiseringsfel langre in.
+    if not cfg.active_llm().api_key:
+        raise HTTPException(
+            400,
+            f"Ingen API-nyckel konfigurerad for vald leverantor ({cfg.provider}). "
+            "Satt den under Installningar.",
+        )
 
     message = req.message.strip()
     if not message:
