@@ -102,6 +102,10 @@ export default function ChatView({
     setStreaming(false)
     setTool(null)
     abortRef.current = null
+    // Streamen ar klar och svaret ar sparat i servern. Slapp guarden sa att
+    // samtalet laddas om normalt nasta gang man klickar in pa det igen (annars
+    // kunde man aldrig oppna den nyss skapade - oversta - traden pa nytt).
+    selfCreatedRef.current = null
     onTitleMaybeChanged()
   }
 
