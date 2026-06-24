@@ -41,6 +41,8 @@ export const api = {
 
   getUsage: () => fetch('/api/usage').then((r) => jsonOrThrow<UsageSummary>(r)),
 
+  resetUsage: () => fetch('/api/usage', { method: 'DELETE' }).then((r) => jsonOrThrow(r)),
+
   getSettings: () => fetch('/api/settings').then((r) => jsonOrThrow<Settings>(r)),
 
   updateSettings: (

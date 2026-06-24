@@ -14,6 +14,10 @@ export interface ConversationSummary {
   id: string
   title: string
   updated_at: number
+  // Leverantör/modell som startade samtalet (visas i tooltip). Kan saknas för
+  // samtal skapade innan kolumnerna fanns.
+  model?: string | null
+  provider?: string | null
 }
 
 export interface DocumentSummary {

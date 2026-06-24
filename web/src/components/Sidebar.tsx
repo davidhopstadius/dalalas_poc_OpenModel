@@ -2,6 +2,19 @@ import { Activity, FileText, KeyRound, Plus, Settings as SettingsIcon, Trash2, X
 import { api } from '../api'
 import type { ConversationSummary, View } from '../types'
 
+const PROVIDER_LABELS: Record<string, string> = {
+  grunden: 'Grunden',
+  berget: 'Berget',
+  anthropic: 'Anthropic',
+}
+
+/** Tooltip-text som visar vilken modell/leverantör samtalet startades med. */
+function modelTooltip(c: ConversationSummary): string | undefined {
+  if (!c.model) return undefined
+  const prov = c.provider ? PROVIDER_LABELS[c.provider] ?? c.provider : null
+  return prov ? `Startad med ${prov} · ${c.model}` : `Startad med ${c.model}`
+}
+
 interface Props {
   view: View
   conversations: ConversationSummary[]
@@ -96,6 +109,7 @@ export default function Sidebar({
                 <li key={c.id}>
                   <button
                     onClick={() => onOpenConversation(c.id)}
+                    title={modelTooltip(c)}
                     className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13.5px] transition
                       ${active ? 'bg-accent-soft text-accent-hover' : 'text-ink-soft hover:bg-line-soft hover:text-ink'}`}
                   >

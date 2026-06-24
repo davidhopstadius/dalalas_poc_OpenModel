@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowDownLeft, ArrowUpRight, Coins, Loader2, RotateCw, Sigma } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Coins, Loader2, RotateCw, Sigma, Trash2 } from 'lucide-react'
 import { api } from '../api'
 import type { UsageBlock, UsageSummary } from '../types'
 
@@ -33,6 +33,8 @@ export default function DriftInfoView() {
   const [usage, setUsage] = useState<UsageSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [confirming, setConfirming] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   const refresh = async () => {
     try {
@@ -42,6 +44,19 @@ export default function DriftInfoView() {
       setError((e as Error).message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const reset = async () => {
+    setResetting(true)
+    try {
+      await api.resetUsage()
+      setConfirming(false)
+      await refresh()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -140,12 +155,48 @@ export default function DriftInfoView() {
         )}
 
         {usage && (
-          <p className="mt-6 text-[12px] leading-relaxed text-ink-faint">
-            Kostnaden är beräknad utifrån respektive leverantörs listpris och avser endast
-            chattmodellen — embeddings och reranker debiteras inte. Belopp visas per valuta (kr för
-            Grunden/Berget, $ för Anthropic) utan växelkurs. Siffrorna räknas från och med att den
-            här funktionen togs i bruk.
-          </p>
+          <>
+            <p className="mt-6 text-[12px] leading-relaxed text-ink-faint">
+              Statistiken visar <strong>endast</strong> frågor som körts mot den aktiva leverantören
+              ({PROVIDER_LABELS[usage.provider] ?? usage.provider}). Kostnaden är beräknad utifrån
+              leverantörens listpris och avser endast chattmodellen — embeddings och reranker
+              debiteras inte. Byt leverantör under Inställningar för att se en annans siffror.
+            </p>
+
+            {/* Nollställning */}
+            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+              {confirming ? (
+                <>
+                  <span className="text-[13px] text-ink-soft">
+                    Nollställ <strong>all</strong> statistik (alla leverantörer)? Går inte att ångra.
+                  </span>
+                  <button
+                    onClick={reset}
+                    disabled={resetting}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-danger px-3 py-1.5 text-[13px] font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                  >
+                    {resetting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    Ja, nollställ
+                  </button>
+                  <button
+                    onClick={() => setConfirming(false)}
+                    disabled={resetting}
+                    className="rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium text-ink-soft transition hover:text-ink"
+                  >
+                    Avbryt
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setConfirming(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium text-ink-soft transition hover:border-danger/40 hover:text-danger"
+                >
+                  <Trash2 size={14} />
+                  Nollställ statistik
+                </button>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

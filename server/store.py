@@ -32,7 +32,9 @@ def init_db() -> None:
                 id          TEXT PRIMARY KEY,
                 title       TEXT NOT NULL,
                 created_at  REAL NOT NULL,
-                updated_at  REAL NOT NULL
+                updated_at  REAL NOT NULL,
+                model       TEXT,
+                provider    TEXT
             );
             CREATE TABLE IF NOT EXISTS messages (
                 id              TEXT PRIMARY KEY,
@@ -64,23 +66,34 @@ def init_db() -> None:
             conn.execute("ALTER TABLE usage ADD COLUMN provider TEXT")
         if "latency_ms" not in existing:
             conn.execute("ALTER TABLE usage ADD COLUMN latency_ms INTEGER")
+        conv_cols = {row["name"] for row in conn.execute("PRAGMA table_info(conversations)")}
+        if "model" not in conv_cols:
+            conn.execute("ALTER TABLE conversations ADD COLUMN model TEXT")
+        if "provider" not in conv_cols:
+            conn.execute("ALTER TABLE conversations ADD COLUMN provider TEXT")
 
 
 def list_conversations() -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, title, updated_at FROM conversations ORDER BY updated_at DESC"
+            "SELECT id, title, updated_at, model, provider FROM conversations "
+            "ORDER BY updated_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
 
 
-def create_conversation(title: str) -> str:
+def create_conversation(
+    title: str, model: str | None = None, provider: str | None = None
+) -> str:
+    """Skapa ett samtal. model/provider lagras for den leverantor som STARTADE
+    samtalet, sa sidopanelen kan visa det i tooltip aven om man byter sen."""
     conv_id = uuid.uuid4().hex
     now = time.time()
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            (conv_id, title.strip()[:80] or "Nytt samtal", now, now),
+            "INSERT INTO conversations (id, title, created_at, updated_at, model, provider) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (conv_id, title.strip()[:80] or "Nytt samtal", now, now, model, provider),
         )
     return conv_id
 
@@ -170,8 +183,12 @@ def record_usage(
         )
 
 
-def usage_summary() -> dict:
-    """Aggregerad token-anvandning: senaste fraga, senaste trad, idag, totalt."""
+def usage_summary(provider: str | None = None) -> dict:
+    """Aggregerad token-anvandning for EN leverantor: senaste fraga, senaste
+    trad, idag, totalt. Bara rader som korts mot `provider` raknas, sa
+    Driftinfo speglar enbart den valda leverantoren. Rader utan provider raknas
+    som 'grunden' (gamla rader fran innan kolumnen fanns)."""
+    prov = provider or "grunden"
     midnight = (
         datetime.datetime.now()
         .replace(hour=0, minute=0, second=0, microsecond=0)
@@ -180,18 +197,22 @@ def usage_summary() -> dict:
     with _connect() as conn:
         last = conn.execute(
             "SELECT conversation_id, message_id, latency_ms FROM usage "
-            "ORDER BY created_at DESC LIMIT 1"
+            "WHERE COALESCE(provider, 'grunden') = ? ORDER BY created_at DESC LIMIT 1",
+            (prov,),
         ).fetchone()
         last_conv_id = last["conversation_id"] if last else None
         last_msg_id = last["message_id"] if last else None
         last_latency_ms = last["latency_ms"] if last else None
 
-        def agg(where: str, params: tuple) -> dict:
+        def agg(cond: str, params: tuple) -> dict:
+            # Leverantorsfiltret ligger alltid forst; ev. extra villkor laggs pa.
+            where = "WHERE COALESCE(provider, 'grunden') = ?" + (f" AND {cond}" if cond else "")
+            args = (prov,) + params
             row = conn.execute(
                 "SELECT COALESCE(SUM(prompt_tokens), 0) AS p, "
                 "COALESCE(SUM(completion_tokens), 0) AS c, COUNT(*) AS n "
                 f"FROM usage {where}",
-                params,
+                args,
             ).fetchone()
             # Gruppera per (provider, model) sa kostnaden kan rakna i ratt valuta.
             groups = conn.execute(
@@ -199,7 +220,7 @@ def usage_summary() -> dict:
                 "COALESCE(SUM(prompt_tokens), 0) AS p, "
                 "COALESCE(SUM(completion_tokens), 0) AS c "
                 f"FROM usage {where} GROUP BY provider, model",
-                params,
+                args,
             ).fetchall()
             return {
                 "prompt_tokens": row["p"],
@@ -217,15 +238,11 @@ def usage_summary() -> dict:
                 ],
             }
 
-        last_message = (
-            agg("WHERE message_id = ?", (last_msg_id,)) if last_msg_id else agg("WHERE 0", ())
-        )
+        last_message = agg("message_id = ?", (last_msg_id,)) if last_msg_id else agg("0", ())
         last_conversation = (
-            agg("WHERE conversation_id = ?", (last_conv_id,))
-            if last_conv_id
-            else agg("WHERE 0", ())
+            agg("conversation_id = ?", (last_conv_id,)) if last_conv_id else agg("0", ())
         )
-        today = agg("WHERE created_at >= ?", (midnight,))
+        today = agg("created_at >= ?", (midnight,))
         total = agg("", ())
 
         title = None
@@ -243,3 +260,10 @@ def usage_summary() -> dict:
         "total": total,
         "last_latency_ms": last_latency_ms,
     }
+
+
+def reset_usage() -> None:
+    """Nollstall all token-/kostnadsstatistik (Driftinfo). Sjalva samtalen lamnas
+    ororda - bara usage-tabellen toms."""
+    with _connect() as conn:
+        conn.execute("DELETE FROM usage")

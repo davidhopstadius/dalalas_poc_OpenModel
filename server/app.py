@@ -109,7 +109,11 @@ def chat(req: ChatRequest):
     if req.conversation_id and store.conversation_exists(req.conversation_id):
         conv_id = req.conversation_id
     else:
-        conv_id = store.create_conversation(title=message)
+        # Lagra vilken leverantor/modell som STARTADE samtalet (visas i sidopanelens
+        # tooltip aven om man byter leverantor senare).
+        conv_id = store.create_conversation(
+            title=message, model=cfg.active_llm().model, provider=cfg.provider
+        )
 
     prior = store.get_messages(conv_id)
     bot = build_chat(cfg)
@@ -294,7 +298,8 @@ def delete_document(doc_name: str):
 @app.get("/api/usage")
 def get_usage():
     cfg = runtime.effective_config()
-    summary = store.usage_summary()
+    # Visa enbart statistik for den aktiva leverantoren.
+    summary = store.usage_summary(cfg.provider)
 
     # Summera kostnaden per valuta (Grunden/Berget i SEK, Anthropic i USD) sa vi
     # aldrig blandar ihop valutor i en och samma siffra.
@@ -319,6 +324,13 @@ def get_usage():
         "currency": r["currency"],
     }
     return summary
+
+
+@app.delete("/api/usage")
+def reset_usage():
+    """Nollstall all token-/kostnadsstatistik (alla leverantorer). Samtalen lamnas."""
+    store.reset_usage()
+    return {"ok": True}
 
 
 # --------------------------------------------------------------------------- #
