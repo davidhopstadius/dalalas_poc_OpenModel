@@ -67,12 +67,15 @@ export default function ChatView({
     abortRef.current = ctrl
     let acc = ''
     let citations: Citation[] = []
+    let convId = conversationId
+    let interrupted = false
 
     try {
       await streamChat(
         { message: text, conversation_id: conversationId },
         {
           onStart: (id) => {
+            convId = id
             if (!conversationId) {
               selfCreatedRef.current = id
               onConversationCreated(id)
@@ -86,17 +89,32 @@ export default function ChatView({
           },
           onDone: (payload) => {
             citations = payload.citations
+            convId = payload.conversation_id
           },
-          onError: (msg) => setError(msg),
+          onError: (msg) => {
+            interrupted = true
+            setError(msg)
+          },
         },
         ctrl.signal,
       )
     } catch (e) {
+      interrupted = true
       if ((e as Error).name !== 'AbortError') setError((e as Error).message)
     }
 
     if (acc) {
       setMessages((m) => [...m, { role: 'assistant', content: acc, citations }])
+    } else if (!interrupted && convId) {
+      // Inga tokens mottogs men ingen felsignal heller - servern kan anda ha
+      // sparat svaret (t.ex. en transient stromnings-hicka). Hamta sanningen
+      // fran servern sa anvandaren inte blir utan svar.
+      try {
+        const c = await api.getConversation(convId)
+        setMessages(c.messages)
+      } catch {
+        /* lat tomt-laget sta */
+      }
     }
     setStreamContent('')
     setStreaming(false)

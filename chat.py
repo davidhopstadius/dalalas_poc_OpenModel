@@ -162,13 +162,24 @@ class GrundenChat:
                 for key in self.usage:
                     self.usage[key] += usage.get(key, 0)
 
+            # Sallsynt: modellen returnerar en helt tom tur (varken text eller
+            # verktygsanrop). Det intraffar oftare med thinking AV och lamnar
+            # annars anvandaren helt utan svar. Gor ett (1) omforsok innan vi
+            # bygger turen - historiken slutar fortfarande pa user/tool, sa
+            # omforsoket ar rent.
+            if not tool_calls and not content.strip():
+                content, tool_calls, usage = self._consume_stream(self._create(), on_token)
+                if usage:
+                    for key in self.usage:
+                        self.usage[key] += usage.get(key, 0)
+
             assistant_msg: Message = {"role": "assistant", "content": content}
             if tool_calls:
                 assistant_msg["tool_calls"] = tool_calls
             self.history.append(assistant_msg)
 
             if not tool_calls:
-                return content
+                return content or "(Tomt svar fran modellen - forsok igen.)"
 
             for tc in tool_calls:
                 fn = tc["function"]
