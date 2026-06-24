@@ -71,6 +71,26 @@ def init_db() -> None:
             conn.execute("ALTER TABLE conversations ADD COLUMN model TEXT")
         if "provider" not in conv_cols:
             conn.execute("ALTER TABLE conversations ADD COLUMN provider TEXT")
+        # Backfill: samtal skapade innan kolumnerna fanns saknar model/provider.
+        # Harled dem fran den FORSTA usage-raden for samtalet (den som startade
+        # det), sa aven gamla trader far en tooltip. Idempotent (rakar bara NULL).
+        conn.execute(
+            """
+            UPDATE conversations SET
+                model = (
+                    SELECT model FROM usage u
+                    WHERE u.conversation_id = conversations.id
+                    ORDER BY u.created_at LIMIT 1
+                ),
+                provider = (
+                    SELECT COALESCE(provider, 'grunden') FROM usage u
+                    WHERE u.conversation_id = conversations.id
+                    ORDER BY u.created_at LIMIT 1
+                )
+            WHERE model IS NULL
+              AND EXISTS (SELECT 1 FROM usage u WHERE u.conversation_id = conversations.id)
+            """
+        )
 
 
 def list_conversations() -> list[dict]:
