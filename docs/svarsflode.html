@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0}*,*::before,*::after{box-sizing:border-box}</style>
+<title>Låsmontörens svarsflöde</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: en bred flödesillustration (vänster → höger → tillbaka), därunder en kort stegförklaring. */
+:root {
+  --bg: #EDF0F3;
+  --surface: #FFFFFF;
+  --ink: #15212C;
+  --ink-muted: #A9B6C2;
+  --muted: #5A6875;
+  --line: #C9D1D9;
+  --brass: #A8761E;
+  --brass-soft: #F3E6CC;
+  --rag: #17756F;
+  --rag-soft: #DCEEEB;
+  --web: #4A57A8;
+  --web-soft: #E2E5F4;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1720; --surface: #17222D; --ink: #E6ECF1; --ink-muted: #4C5A68; --muted: #93A1AE;
+    --line: #2C3A47; --brass: #D6A54A; --brass-soft: #3A2E17; --rag: #4FBDB4; --rag-soft: #12302D;
+    --web: #8C98E6; --web-soft: #1D2340; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1720; --surface: #17222D; --ink: #E6ECF1; --ink-muted: #4C5A68; --muted: #93A1AE;
+  --line: #2C3A47; --brass: #D6A54A; --brass-soft: #3A2E17; --rag: #4FBDB4; --rag-soft: #12302D;
+  --web: #8C98E6; --web-soft: #1D2340; color-scheme: dark;
+}
+
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 56px; display: grid; gap: 32px; }
+
+header { display: grid; gap: 10px; max-width: 70ch; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--brass); font-weight: 600; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(28px, 4vw, 44px); line-height: 1.08; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+.lede { margin: 0; color: var(--muted); font-size: 17px; }
+
+.figure { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow-x: auto; }
+.figure svg { display: block; width: 100%; min-width: 960px; height: auto; }
+
+/* SVG-klasser */
+.t-display { font-family: var(--font-display); font-weight: 700; }
+.t-body { font-family: var(--font-body); }
+.t-mono { font-family: var(--font-mono); font-weight: 500; }
+.f-ink { fill: var(--ink); } .f-muted { fill: var(--muted); } .f-bg { fill: var(--bg); } .f-surface { fill: var(--surface); }
+.f-inkm { fill: var(--ink-muted); } .f-brass { fill: var(--brass); } .f-rag { fill: var(--rag); } .f-web { fill: var(--web); }
+.f-brass-soft { fill: var(--brass-soft); } .f-rag-soft { fill: var(--rag-soft); } .f-web-soft { fill: var(--web-soft); }
+.s-line { stroke: var(--line); } .s-rag { stroke: var(--rag); } .s-web { stroke: var(--web); } .s-brass { stroke: var(--brass); } .s-ink { stroke: var(--ink); } .s-inkm { stroke: var(--ink-muted); }
+.wire { fill: none; stroke-width: 2.2; stroke-linecap: round; }
+.flow { stroke-dasharray: 7 7; animation: flow 1.1s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -28; } }
+@media (prefers-reduced-motion: reduce) { .flow { animation: none; } }
+
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+.step { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; align-items: start; }
+.num { width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--bg); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 15px; }
+.step h2 { font-family: var(--font-display); font-size: 17px; font-weight: 600; margin: 2px 0 4px; }
+.step p { margin: 0; color: var(--muted); font-size: 14px; }
+code { font-family: var(--font-mono); font-size: .9em; }
+
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; border-top: 1px solid var(--line); padding-top: 24px; }
+.fact h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.fact p { margin: 0; color: var(--muted); font-size: 14px; }
+.fact .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+
+@media (max-width: 860px) {
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .facts { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .steps { grid-template-columns: minmax(0, 1fr); }
+  .wrap { padding-inline: 16px; padding-block: 28px 40px; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.3-9.3M16 7l3 3M18 5l2 2"/></svg>
+      Låsmontörens bästa vän
+    </span>
+    <h1>Från fråga i fält till svar med sidhänvisning</h1>
+    <p class="lede">Teknikern ställer en fråga. Språkmodellen hämtar själv fakta ur manualerna eller från webben och svarar med källa, så att svaret går att kontrollera.</p>
+  </header>
+
+  <div class="figure">
+    <svg viewBox="0 0 1200 690" role="img" aria-labelledby="fig-t fig-d">
+      <title id="fig-t">Svarsflödet</title>
+      <desc id="fig-d">Teknikern skickar en fråga via webbappen till språkmodellen. Modellen anropar dokumentsökning i manualerna och vid behov webbsökning, och svaret strömmas tillbaka med källa och sidnummer.</desc>
+      <defs>
+        <marker id="a-ink" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="f-ink"/></marker>
+        <marker id="a-rag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="f-rag"/></marker>
+        <marker id="a-web" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="f-web"/></marker>
+        <marker id="a-brass" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="f-brass"/></marker>
+      </defs>
+
+      <!-- ============ Teknikern / telefonen ============ -->
+      <text x="130" y="150" text-anchor="middle" class="t-display f-ink" font-size="17">Teknikern i fält</text>
+      <rect x="40" y="170" width="180" height="320" rx="24" class="f-surface s-ink" stroke-width="2.5"/>
+      <rect x="105" y="180" width="50" height="6" rx="3" class="f-inkm"/>
+      <text x="130" y="206" text-anchor="middle" class="t-body f-muted" font-size="10.5" font-weight="600">Låsmontörens bästa vän</text>
+      <line x1="52" y1="216" x2="208" y2="216" class="s-line"/>
+      <!-- fråga -->
+      <rect x="72" y="228" width="136" height="68" rx="12" class="f-brass-soft"/>
+      <text class="t-body f-ink" font-size="11.5"><tspan x="82" y="248">LED blinkar rött 3 ggr</tspan><tspan x="82" y="264">på SW300. Vad betyder</tspan><tspan x="82" y="280">det?</tspan></text>
+      <!-- verktygsindikator -->
+      <text x="52" y="316" class="t-mono f-rag" font-size="10">⌕ doc_search: blinkkod SW300</text>
+      <!-- svar -->
+      <rect x="52" y="328" width="150" height="104" rx="12" class="f-bg"/>
+      <text class="t-body f-ink" font-size="11.5"><tspan x="62" y="348">Enligt felindikerings-</tspan><tspan x="62" y="364">tabellen betyder det …</tspan><tspan x="62" y="380" class="f-muted">(svar ur manualen)</tspan></text>
+      <rect x="62" y="396" width="118" height="24" rx="12" class="f-rag-soft"/>
+      <text x="121" y="412" text-anchor="middle" class="t-mono f-rag" font-size="10.5">SW300 · sida 92</text>
+      <text x="130" y="470" text-anchor="middle" class="t-body f-muted" font-size="10.5" font-style="italic">exempel</text>
+
+      <!-- ============ Webbapp & server ============ -->
+      <rect x="262" y="280" width="160" height="126" rx="14" class="f-bg s-line" stroke-width="1.5"/>
+      <text x="342" y="314" text-anchor="middle" class="t-display f-ink" font-size="15">Webbapp &amp; server</text>
+      <text text-anchor="middle" class="t-body f-muted" font-size="11.5"><tspan x="342" y="340">Inloggning</tspan><tspan x="342" y="358">Samtalshistorik</tspan><tspan x="342" y="376">Strömmat svar</tspan></text>
+
+      <path d="M222 300 L258 300" class="wire s-ink flow" marker-end="url(#a-ink)"/>
+      <circle cx="240" cy="276" r="13" class="f-ink"/><text x="240" y="281" text-anchor="middle" class="t-display f-bg" font-size="14">1</text>
+
+      <path d="M424 345 L466 345" class="wire s-ink flow" marker-end="url(#a-ink)"/>
+
+      <!-- ============ Språkmodellen ============ -->
+      <rect x="470" y="236" width="230" height="214" rx="18" class="f-ink"/>
+      <circle cx="585" cy="236" r="14" class="f-brass"/><text x="585" y="241" text-anchor="middle" class="t-display f-bg" font-size="14">2</text>
+      <text x="585" y="282" text-anchor="middle" class="t-display f-bg" font-size="20">Språkmodellen</text>
+      <text text-anchor="middle" class="t-body f-inkm" font-size="12"><tspan x="585" y="306">läser frågan och väljer själv</tspan><tspan x="585" y="322">vilka verktyg den behöver</tspan></text>
+      <g class="t-body" font-size="11.5" font-weight="600" text-anchor="middle">
+        <rect x="488" y="344" width="62" height="26" rx="13" fill="none" class="s-inkm" stroke-width="1.3"/><text x="519" y="361" class="f-bg">Grunden</text>
+        <rect x="554" y="344" width="62" height="26" rx="13" fill="none" class="s-inkm" stroke-width="1.3"/><text x="585" y="361" class="f-bg">Berget</text>
+        <rect x="620" y="344" width="62" height="26" rx="13" fill="none" class="s-inkm" stroke-width="1.3"/><text x="651" y="361" class="f-bg">Claude</text>
+      </g>
+      <text text-anchor="middle" class="t-body f-inkm" font-size="11"><tspan x="585" y="396">leverantör byts live i Inställningar</tspan><tspan x="585" y="420">upp till 5 verktygsrundor per fråga</tspan></text>
+
+      <!-- ============ Dokumentsökning (RAG) ============ -->
+      <rect x="770" y="30" width="400" height="350" rx="18" class="f-rag-soft"/>
+      <text x="792" y="64" class="t-display f-rag" font-size="18">Dokumentsökning (RAG)</text>
+      <text x="1150" y="64" text-anchor="end" class="t-mono f-rag" font-size="12">doc_search</text>
+      <text x="792" y="86" class="t-body f-muted" font-size="12">Svar ur tillverkarnas manualer (PDF)</text>
+
+      <g class="t-body" font-size="12" font-weight="500">
+        <rect x="792" y="102" width="92" height="28" rx="7" class="f-surface s-line"/><text x="838" y="121" text-anchor="middle" class="f-ink">SW300</text>
+        <rect x="894" y="102" width="98" height="28" rx="7" class="f-surface s-line"/><text x="943" y="121" text-anchor="middle" class="f-ink">Safetron</text>
+        <rect x="1002" y="102" width="146" height="28" rx="7" class="f-surface s-line"/><text x="1075" y="121" text-anchor="middle" class="f-ink">LZR Flatscan m.fl.</text>
+      </g>
+      <path d="M838 131 V148 M943 131 V148 M1075 131 V148" class="s-rag" stroke-width="1.5" fill="none"/>
+      <rect x="792" y="150" width="356" height="34" rx="8" class="f-surface s-rag" stroke-width="1.3" stroke-dasharray="4 3"/>
+      <text x="970" y="172" text-anchor="middle" class="t-body f-muted" font-size="11.5">Index · tabeller hålls hela · text i bitar à 1 200 tecken</text>
+
+      <g>
+        <rect x="792" y="206" width="112" height="72" rx="10" class="f-surface s-rag" stroke-width="1.5"/>
+        <text x="848" y="231" text-anchor="middle" class="t-body f-ink" font-size="12.5" font-weight="600">Fråga → vektor</text>
+        <text text-anchor="middle" class="t-body f-muted" font-size="11"><tspan x="848" y="250">e5-large</tspan><tspan x="848" y="266">körs lokalt</tspan></text>
+
+        <rect x="914" y="206" width="112" height="72" rx="10" class="f-surface s-rag" stroke-width="1.5"/>
+        <text x="970" y="231" text-anchor="middle" class="t-body f-ink" font-size="12.5" font-weight="600">Närmaste 20</text>
+        <text text-anchor="middle" class="t-body f-muted" font-size="11"><tspan x="970" y="250">likhetssökning</tspan><tspan x="970" y="266">mot alla bitar</tspan></text>
+
+        <rect x="1036" y="206" width="112" height="72" rx="10" class="f-surface s-rag" stroke-width="1.5"/>
+        <text x="1092" y="231" text-anchor="middle" class="t-body f-ink" font-size="12.5" font-weight="600">Rerank → 5</text>
+        <text text-anchor="middle" class="t-body f-muted" font-size="11"><tspan x="1092" y="250">cross-encoder</tspan><tspan x="1092" y="266">körs lokalt</tspan></text>
+      </g>
+      <path d="M905 242 H912 M1027 242 H1034" class="s-rag" stroke-width="2" fill="none" marker-end="url(#a-rag)"/>
+
+      <rect x="792" y="298" width="356" height="60" rx="10" class="f-rag"/>
+      <text x="808" y="320" class="t-body f-surface" font-size="11.5">Tillbaka till modellen</text>
+      <text x="808" y="343" class="t-mono f-surface" font-size="13">[Källa: SW300, sida 92] + textutdrag</text>
+
+      <path d="M702 290 C 738 290, 734 212, 766 212" class="wire s-rag flow" marker-end="url(#a-rag)"/>
+      <path d="M770 328 C 738 328, 740 318, 706 318" class="wire s-rag" marker-end="url(#a-rag)"/>
+      <circle cx="736" cy="248" r="13" class="f-rag"/><text x="736" y="253" text-anchor="middle" class="t-display f-surface" font-size="14">3</text>
+
+      <!-- ============ Webbsökning ============ -->
+      <rect x="770" y="420" width="400" height="184" rx="18" class="f-web-soft"/>
+      <text x="792" y="454" class="t-display f-web" font-size="18">Webbsökning</text>
+      <text x="1150" y="454" text-anchor="end" class="t-mono f-web" font-size="12">web_search</text>
+      <text x="792" y="476" class="t-body f-muted" font-size="12">Aktuell fakta som inte står i manualerna</text>
+
+      <g>
+        <rect x="792" y="494" width="112" height="64" rx="10" class="f-surface s-web" stroke-width="1.5"/>
+        <text x="848" y="519" text-anchor="middle" class="t-body f-ink" font-size="12.5" font-weight="600">Sökfras</text>
+        <text x="848" y="538" text-anchor="middle" class="t-body f-muted" font-size="11">modellen formulerar</text>
+
+        <rect x="914" y="494" width="112" height="64" rx="10" class="f-surface s-web" stroke-width="1.5"/>
+        <text x="970" y="519" text-anchor="middle" class="t-body f-ink" font-size="12.5" font-weight="600">Brave Search</text>
+        <text x="970" y="538" text-anchor="middle" class="t-body f-muted" font-size="11">webbens index</text>
+
+        <rect x="1036" y="494" width="112" height="64" rx="10" class="f-surface s-web" stroke-width="1.5"/>
+        <text x="1092" y="519" text-anchor="middle" class="t-body f-ink" font-size="12.5" font-weight="600">5 träffar</text>
+        <text x="1092" y="538" text-anchor="middle" class="t-body f-muted" font-size="11">titel, länk, utdrag</text>
+      </g>
+      <path d="M905 526 H912 M1027 526 H1034" class="s-web" stroke-width="2" fill="none" marker-end="url(#a-web)"/>
+      <text x="792" y="584" class="t-body f-muted" font-size="11">Kan slås av · kräver Brave-nyckel</text>
+
+      <path d="M702 400 C 738 400, 734 510, 766 510" class="wire s-web flow" marker-end="url(#a-web)"/>
+      <path d="M770 572 C 730 572, 742 432, 706 432" class="wire s-web" marker-end="url(#a-web)"/>
+      <circle cx="736" cy="470" r="13" class="f-web"/><text x="736" y="475" text-anchor="middle" class="t-display f-surface" font-size="14">3</text>
+
+      <!-- ============ Svaret tillbaka ============ -->
+      <path d="M585 452 L585 638 Q585 652 571 652 L144 652 Q130 652 130 638 L130 496" class="wire s-brass flow" stroke-width="2.6" marker-end="url(#a-brass)"/>
+      <circle cx="585" cy="560" r="14" class="f-brass"/><text x="585" y="565" text-anchor="middle" class="t-display f-bg" font-size="14">4</text>
+      <text x="360" y="640" text-anchor="middle" class="t-display f-brass" font-size="15">Svaret strömmas tillbaka, med källa och sida</text>
+    </svg>
+  </div>
+
+  <section class="steps" aria-label="Steg för steg">
+    <div class="step"><span class="num">1</span><div><h2>Frågan</h2><p>Teknikern skriver i webbappen. Servern kollar inloggningen och hämtar tidigare meddelanden i samtalet.</p></div></div>
+    <div class="step"><span class="num">2</span><div><h2>Modellen väljer</h2><p>Språkmodellen avgör själv om den behöver söka i manualerna, på webben eller båda.</p></div></div>
+    <div class="step"><span class="num">3</span><div><h2>Verktygen hämtar fakta</h2><p><code>doc_search</code> hittar de 5 mest relevanta bitarna ur manualerna. <code>web_search</code> hämtar aktuell information.</p></div></div>
+    <div class="step"><span class="num">4</span><div><h2>Svar med källa</h2><p>Svaret bygger på det som hämtats och visas ord för ord, med dokument och sidnummer.</p></div></div>
+  </section>
+
+  <section class="facts" aria-label="Därför går det att lita på">
+    <div class="fact"><h3><span class="dot" style="background: var(--rag)"></span>Går att kontrollera</h3><p>Varje svar ur manualerna anger dokument och sida, så teknikern kan slå upp originalet.</p></div>
+    <div class="fact"><h3><span class="dot" style="background: var(--brass)"></span>Sökningen körs hos oss</h3><p>Indexering, vektorer och rerank körs lokalt. Bara frågan och utvalda textutdrag skickas till språkmodellen.</p></div>
+    <div class="fact"><h3><span class="dot" style="background: var(--web)"></span>Inte låst till en leverantör</h3><p>Grunden och Berget är svenska alternativ. Claude finns som tillval. Byte sker utan omstart.</p></div>
+  </section>
+</div>
+</body>
+</html>
